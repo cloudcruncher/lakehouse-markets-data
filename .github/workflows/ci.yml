@@ -51,3 +51,7 @@ jobs:
           "from markets_data.definitions import defs; print(sorted(k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()))"
       - name: The Coinbase producer's libraries are installed
         run: docker run --rm --entrypoint python3 markets-data:ci -c "import markets_data.coinbase"
+      - name: The trades stream's Spark transforms, on sample records
+        run: >
+          docker run --rm -v "$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit
+          markets-data:ci --master "local[1]" /checks/check_stream.py

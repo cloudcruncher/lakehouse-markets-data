@@ -5,26 +5,11 @@ The platform runs it as `tenant-markets-data-code` (generated from its tenants/m
 Each asset shells out to spark-submit as this tenant's own Polaris principal.
 """
 
-import os
-from pathlib import Path
-
 import dagster as dg
 
-JOBS = Path(__file__).with_name("jobs")
+from markets_data.submit import spark_submit
+
 OWNERS = ["team:markets-data"]
-
-
-def spark_submit(script: str) -> list[str]:
-    return [
-        "/opt/spark/bin/spark-submit",
-        "--master",
-        "local[2]",
-        "--driver-memory",
-        os.environ.get("SPARK_DRIVER_MEMORY", "768m"),
-        "--conf",
-        "spark.ui.showConsoleProgress=false",
-        str(JOBS / script),
-    ]
 
 
 @dg.asset(

@@ -20,7 +20,14 @@ run: build ## Materialise one asset against the local platform: make run ASSET=m
 feed: build ## Run the Coinbase producer against the local platform's Kafka (Ctrl-C stops it)
 	docker compose run --rm coinbase
 
+stream: build ## Run the trades stream against the local platform (Ctrl-C stops it; resumes from /state)
+	docker compose run --rm trades-stream
+
+spark-check: build ## The stream's Spark transforms on sample records, inside the image (no platform needed)
+	docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
+	  ghcr.io/cloudcruncher/lakehouse-markets-data:dev --master "local[1]" /checks/check_stream.py
+
 contracts: ## The platform's contract check, as CI runs it (needs ../open-lakehouse)
 	uv run --quiet ../open-lakehouse/contracts/check.py --tenant markets-data --dir contracts
 
-.PHONY: help lint test build run feed contracts
+.PHONY: help lint test build run feed stream spark-check contracts
