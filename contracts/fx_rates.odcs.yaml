@@ -1,0 +1,28 @@
+# Data contract for ECB reference rates in bronze (ODCS v3.2.0). Checked in CI by the
+# platform's tenant-contracts workflow: schema, namespaces, and policy tags (ADR 14).
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:lakehouse-markets-data:contract:fx-rates
+name: fx_rates
+version: 0.1.0
+status: draft
+tenant: markets-data
+domain: markets
+tags: [reference, fx, public-data]
+description:
+  purpose: Euro reference rates per business day, to convert card authorisations and trades to one currency.
+  usage: Join on rate_date (the latest fixing on or before the event date) and quote currency.
+  limitations: One fixing per business day around 16:00 CET; no weekend or holiday rates. Public data, no PII.
+schema:
+  - name: fx_rates
+    physicalName: lakehouse.markets_bronze.fx_rates
+    physicalType: table
+    logicalType: object
+    description: One row per (rate_date, base, quote); corrections are merged in place.
+    properties:
+      - { name: rate_date, logicalType: date, physicalType: date, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public }
+      - { name: base, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: Always EUR }
+      - { name: quote, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 3, classification: public, description: ISO 4217 code }
+      - { name: rate, logicalType: number, physicalType: double, required: true, classification: public, description: Units of quote per 1 EUR }
+      - { name: source, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
