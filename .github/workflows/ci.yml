@@ -31,10 +31,10 @@ jobs:
       - run: make test
 
   contracts:
-    uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@v0.2.0
+    uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@v0.3.0
     with:
       tenant: markets-data
-      platform-ref: v0.2.0
+      platform-ref: v0.3.0
 
   image:
     name: image builds on the platform base
@@ -49,3 +49,5 @@ jobs:
         run: >
           docker run --rm --entrypoint python3 markets-data:ci -c
           "from markets_data.definitions import defs; print(sorted(k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()))"
+      - name: The Coinbase producer's libraries are installed
+        run: docker run --rm --entrypoint python3 markets-data:ci -c "import markets_data.coinbase"

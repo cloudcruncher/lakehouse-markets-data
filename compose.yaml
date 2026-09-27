@@ -23,6 +23,18 @@ services:
         volume: { subpath: tenants/markets-data }
     mem_limit: 1536m
 
+  # The Coinbase producer, as the platform runs it (tenants/markets-data.yaml `services:`):
+  # same image, Kafka only. `make feed` runs it here.
+  coinbase:
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:dev
+    profiles: [feed]
+    entrypoint: ["python3", "-m", "markets_data.coinbase"]
+    networks: [stream]
+    environment:
+      TENANT: markets-data
+      KAFKA_BOOTSTRAP: kafka:9092
+    mem_limit: 128m
+
 networks:
   data: { external: true, name: open-lakehouse_data }
   stream: { external: true, name: open-lakehouse_stream }

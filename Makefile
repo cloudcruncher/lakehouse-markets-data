@@ -17,7 +17,10 @@ build: ## Build the code-location image on the platform base image
 run: build ## Materialise one asset against the local platform: make run ASSET=markets_bronze/fx_rates
 	docker compose run --rm --entrypoint dagster code asset materialize -m markets_data.definitions --select $(ASSET)
 
+feed: build ## Run the Coinbase producer against the local platform's Kafka (Ctrl-C stops it)
+	docker compose run --rm coinbase
+
 contracts: ## The platform's contract check, as CI runs it (needs ../open-lakehouse)
 	uv run --quiet ../open-lakehouse/contracts/check.py --tenant markets-data --dir contracts
 
-.PHONY: help lint test build run contracts
+.PHONY: help lint test build run feed contracts
