@@ -10,7 +10,7 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 |---|---|---|
 | ECB reference rates (Frankfurter API, daily) | `markets_bronze.fx_rates` | done |
 | Coinbase WebSocket trades (stream) | `markets.coinbase.trades` -> `markets_bronze.trades` -> `markets_silver.trades` | done |
-| Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` -> `markets_bronze` | planned |
+| Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` (generator done) -> `markets_bronze` | next |
 | Sanctions lists (OpenSanctions / HMT, daily) | `markets_bronze` | planned |
 
 ## Working here
@@ -21,6 +21,7 @@ make run              # against a local platform: in ../open-lakehouse run `make
 make feed             # the Coinbase producer -> markets.coinbase.trades, against the local platform
 make stream           # the trades stream -> markets_bronze.trades, markets_silver.trades (resumes from /state)
 make spark-check      # the stream's Spark transforms on sample records, inside the image (~10 s)
+make card-auths-sample  # 5 generated card authorisations, printed (needs the licence, see below)
 make contracts        # the platform's contract check, as CI runs it
 ```
 
@@ -51,3 +52,16 @@ platform team. The full interface is in the platform's `tenants/README.md`.
 CI stays fast (the target is a release an hour): lint and unit tests without Docker, the
 platform's contract check (reusable workflow, pinned to `v0.3.0`), and an image build that
 loads the code location.
+
+## Card authorisations (ShadowTraffic)
+
+`generators/card-auths/` is ShadowTraffic with this team's config: ~10 authorisations a second
+from 5,000 cards (keyed by card token) at 16 merchants, in seven currencies that all have an ECB
+rate, plus ~1% malformed records for the stream's dead-letter topic. It ships as
+`lakehouse-markets-data:card-auths-<version>` and runs as a tenant service.
+
+The licence is this team's, never in git: the platform tenant file declares the slot, and the
+team stores it once from the platform repo with
+`make tenant-secret TENANT=markets-data NAME=shadowtraffic FILE=<licence.env>`. Local runs here
+and the platform's service read the same file. Without it (the platform's CI) the generator
+idles and says why; when the trial expires, store the renewed file the same way.

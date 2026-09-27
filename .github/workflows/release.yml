@@ -60,3 +60,29 @@ jobs:
           IMAGE: ghcr.io/${{ github.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      # The card-authorisation generator: same package, `card-auths-` tags, so it is public too.
+      - id: meta-card-auths
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=short,prefix=card-auths-
+            type=ref,event=branch,prefix=card-auths-
+            type=semver,pattern={{version}},prefix=card-auths-
+      - id: build-card-auths
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: generators/card-auths
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-card-auths.outputs.tags }}
+          labels: ${{ steps.meta-card-auths.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=card-auths
+          cache-to: type=gha,mode=max,scope=card-auths
+      - name: Sign the generator by digest (keyless)
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.build-card-auths.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"

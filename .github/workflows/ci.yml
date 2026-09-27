@@ -55,3 +55,20 @@ jobs:
         run: >
           docker run --rm -v "$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit
           markets-data:ci --master "local[1]" /checks/check_stream.py
+
+  card-auths:
+    name: card-auths generator image idles without a licence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -t card-auths:ci generators/card-auths
+      - name: No licence mounted (as in the platform's CI) -> idle, not a crash loop
+        run: |
+          docker run -d --name ca card-auths:ci
+          sleep 3
+          test "$(docker inspect -f '{{.State.Running}}' ca)" = true
+          docker logs ca 2>&1 | grep -q 'generator idle'
+          docker stop -t 5 ca
