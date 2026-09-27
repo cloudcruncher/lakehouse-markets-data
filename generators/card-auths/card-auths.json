@@ -1,0 +1,402 @@
+{
+  "generators": [
+    {
+      "topic": "markets.payments.card-auths",
+      "vars": {
+        "card": {
+          "_gen": "uniformDistribution",
+          "bounds": [
+            100000,
+            104999
+          ],
+          "decimals": 0
+        },
+        "money": {
+          "_gen": "weightedOneOf",
+          "choices": [
+            {
+              "weight": 45,
+              "value": {
+                "currency": "EUR",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    1,
+                    250
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 15,
+              "value": {
+                "currency": "GBP",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    1,
+                    200
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 15,
+              "value": {
+                "currency": "USD",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    1,
+                    300
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 5,
+              "value": {
+                "currency": "CHF",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    2,
+                    250
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 5,
+              "value": {
+                "currency": "SEK",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    20,
+                    2500
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 8,
+              "value": {
+                "currency": "PLN",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    5,
+                    900
+                  ],
+                  "decimals": 2
+                }
+              }
+            },
+            {
+              "weight": 7,
+              "value": {
+                "currency": "JPY",
+                "amount": {
+                  "_gen": "uniformDistribution",
+                  "bounds": [
+                    100,
+                    40000
+                  ],
+                  "decimals": 0
+                }
+              }
+            }
+          ]
+        },
+        "merchant": {
+          "_gen": "oneOf",
+          "choices": [
+            {
+              "merchant_id": "m-0001",
+              "merchant_name": "Rewe City Koeln",
+              "mcc": "5411",
+              "merchant_country": "DE"
+            },
+            {
+              "merchant_id": "m-0002",
+              "merchant_name": "Tesco Express Camden",
+              "mcc": "5411",
+              "merchant_country": "GB"
+            },
+            {
+              "merchant_id": "m-0003",
+              "merchant_name": "Carrefour Market Lyon",
+              "mcc": "5411",
+              "merchant_country": "FR"
+            },
+            {
+              "merchant_id": "m-0004",
+              "merchant_name": "Shell Recharge A2",
+              "mcc": "5541",
+              "merchant_country": "NL"
+            },
+            {
+              "merchant_id": "m-0005",
+              "merchant_name": "Deutsche Bahn Online",
+              "mcc": "4112",
+              "merchant_country": "DE"
+            },
+            {
+              "merchant_id": "m-0006",
+              "merchant_name": "Ryanair",
+              "mcc": "4511",
+              "merchant_country": "IE"
+            },
+            {
+              "merchant_id": "m-0007",
+              "merchant_name": "Zalando SE",
+              "mcc": "5651",
+              "merchant_country": "DE"
+            },
+            {
+              "merchant_id": "m-0008",
+              "merchant_name": "Starbucks Zurich HB",
+              "mcc": "5814",
+              "merchant_country": "CH"
+            },
+            {
+              "merchant_id": "m-0009",
+              "merchant_name": "IKEA Stockholm",
+              "mcc": "5712",
+              "merchant_country": "SE"
+            },
+            {
+              "merchant_id": "m-0010",
+              "merchant_name": "Zabka Warszawa",
+              "mcc": "5499",
+              "merchant_country": "PL"
+            },
+            {
+              "merchant_id": "m-0011",
+              "merchant_name": "Lawson Shinjuku",
+              "mcc": "5499",
+              "merchant_country": "JP"
+            },
+            {
+              "merchant_id": "m-0012",
+              "merchant_name": "Amazon EU Sarl",
+              "mcc": "5942",
+              "merchant_country": "LU"
+            },
+            {
+              "merchant_id": "m-0013",
+              "merchant_name": "Uber BV",
+              "mcc": "4121",
+              "merchant_country": "NL"
+            },
+            {
+              "merchant_id": "m-0014",
+              "merchant_name": "Booking.com",
+              "mcc": "4722",
+              "merchant_country": "NL"
+            },
+            {
+              "merchant_id": "m-0015",
+              "merchant_name": "Apple Online Store",
+              "mcc": "5732",
+              "merchant_country": "US"
+            },
+            {
+              "merchant_id": "m-0016",
+              "merchant_name": "Walgreens Chicago",
+              "mcc": "5912",
+              "merchant_country": "US"
+            }
+          ]
+        }
+      },
+      "key": {
+        "_gen": "string",
+        "expr": "tok_#{card}"
+      },
+      "value": {
+        "auth_id": {
+          "_gen": "uuid"
+        },
+        "card_token": {
+          "_gen": "string",
+          "expr": "tok_#{card}"
+        },
+        "merchant_id": {
+          "_gen": "var",
+          "var": "merchant",
+          "path": [
+            "merchant_id"
+          ]
+        },
+        "merchant_name": {
+          "_gen": "var",
+          "var": "merchant",
+          "path": [
+            "merchant_name"
+          ]
+        },
+        "mcc": {
+          "_gen": "var",
+          "var": "merchant",
+          "path": [
+            "mcc"
+          ]
+        },
+        "merchant_country": {
+          "_gen": "var",
+          "var": "merchant",
+          "path": [
+            "merchant_country"
+          ]
+        },
+        "amount": {
+          "_gen": "var",
+          "var": "money",
+          "path": [
+            "amount"
+          ]
+        },
+        "currency": {
+          "_gen": "var",
+          "var": "money",
+          "path": [
+            "currency"
+          ]
+        },
+        "channel": {
+          "_gen": "weightedOneOf",
+          "choices": [
+            {
+              "weight": 50,
+              "value": "pos"
+            },
+            {
+              "weight": 30,
+              "value": "contactless"
+            },
+            {
+              "weight": 20,
+              "value": "ecom"
+            }
+          ]
+        },
+        "response_code": {
+          "_gen": "weightedOneOf",
+          "choices": [
+            {
+              "weight": 92,
+              "value": "00"
+            },
+            {
+              "weight": 3,
+              "value": "05"
+            },
+            {
+              "weight": 3,
+              "value": "51"
+            },
+            {
+              "weight": 1,
+              "value": "54"
+            },
+            {
+              "weight": 1,
+              "value": "59"
+            }
+          ]
+        },
+        "auth_time": {
+          "_gen": "formatDateTime",
+          "ms": {
+            "_gen": "now"
+          },
+          "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        }
+      },
+      "localConfigs": {
+        "throttleMs": {
+          "_gen": "uniformDistribution",
+          "bounds": [
+            50,
+            150
+          ]
+        }
+      }
+    },
+    {
+      "topic": "markets.payments.card-auths",
+      "key": "tok_malformed",
+      "value": {
+        "_gen": "weightedOneOf",
+        "choices": [
+          {
+            "weight": 1,
+            "value": {
+              "auth_id": {
+                "_gen": "uuid"
+              },
+              "currency": "EUR",
+              "note": "no amount"
+            }
+          },
+          {
+            "weight": 1,
+            "value": {
+              "auth_id": {
+                "_gen": "uuid"
+              },
+              "amount": -12.5,
+              "currency": "EUR"
+            }
+          },
+          {
+            "weight": 1,
+            "value": {
+              "auth_id": {
+                "_gen": "uuid"
+              },
+              "amount": 10,
+              "currency": "XXX"
+            }
+          },
+          {
+            "weight": 1,
+            "value": "garbled record from a legacy acquirer"
+          }
+        ]
+      },
+      "localConfigs": {
+        "throttleMs": {
+          "_gen": "uniformDistribution",
+          "bounds": [
+            5000,
+            15000
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "kafka": {
+      "kind": "kafka",
+      "producerConfigs": {
+        "bootstrap.servers": {
+          "_gen": "env",
+          "var": "KAFKA_BOOTSTRAP"
+        },
+        "key.serializer": "org.apache.kafka.common.serialization.StringSerializer",
+        "value.serializer": "io.shadowtraffic.kafka.serdes.JsonSerializer",
+        "acks": "all",
+        "enable.idempotence": "true",
+        "compression.type": "zstd"
+      }
+    }
+  }
+}

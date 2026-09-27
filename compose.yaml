@@ -35,6 +35,25 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
     mem_limit: 128m
 
+  # Card authorisations (ShadowTraffic), as the platform runs it: the licence comes from this
+  # tenant's secrets folder (`make tenant-secret` on the platform); without it, it idles.
+  card-auths:
+    build: generators/card-auths
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:card-auths-dev
+    profiles: [feed]
+    networks: [stream]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      SHADOWTRAFFIC_ENV_FILE: /run/tenant-secrets/shadowtraffic.env
+      SHADOWTRAFFIC_ARGS: ${SHADOWTRAFFIC_ARGS:-}
+    volumes:
+      - type: volume
+        source: platform-secrets
+        target: /run/tenant-secrets
+        read_only: true
+        volume: { subpath: tenants/markets-data }
+    mem_limit: 512m
+
   # The Kappa stream, as the platform runs it: Kafka -> markets_bronze.trades -> markets_silver.trades.
   # `make stream` runs it here; checkpoints live in this project's own volume.
   trades-stream:
