@@ -9,7 +9,7 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 | Source | Lands in | Status |
 |---|---|---|
 | ECB reference rates (Frankfurter API, daily) | `markets_bronze.fx_rates` | done |
-| Coinbase WebSocket trades (stream) | `markets.coinbase.trades` (producer done) -> `markets_bronze` | next |
+| Coinbase WebSocket trades (stream) | `markets.coinbase.trades` -> `markets_bronze.trades` -> `markets_silver.trades` | done |
 | Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` -> `markets_bronze` | planned |
 | Sanctions lists (OpenSanctions / HMT, daily) | `markets_bronze` | planned |
 
@@ -19,6 +19,8 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 make lint test        # seconds, no Docker
 make run              # against a local platform: in ../open-lakehouse run `make up` first
 make feed             # the Coinbase producer -> markets.coinbase.trades, against the local platform
+make stream           # the trades stream -> markets_bronze.trades, markets_silver.trades (resumes from /state)
+make spark-check      # the stream's Spark transforms on sample records, inside the image (~10 s)
 make contracts        # the platform's contract check, as CI runs it
 ```
 
@@ -31,6 +33,13 @@ long as the platform runs it, as a tenant service declared in the platform's ten
 this same image. It needs no API key, keeps no state (Kafka is the durable store), and keys each
 trade by product so one product's trades stay in order on one partition. Price and size stay
 strings until the stream parses them as decimals.
+
+The trades stream (`jobs/trades_stream.py`, Kappa: Kafka is the source of truth) is a tenant
+service too, with its checkpoints on the platform's `/state` volume. Bronze keeps every record
+as it arrived; silver keeps each valid trade once (MERGE by product and trade id, since Coinbase
+resends the latest trade after a reconnect); records that fail a rule (`trades.REJECT_RULES`)
+land in `markets_bronze.trades_rejects` with the reason. A lost checkpoint doesn't duplicate
+bronze: the stream resumes after the offsets the table already holds.
 
 ## What the platform gives this repo
 

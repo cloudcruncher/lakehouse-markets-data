@@ -1,0 +1,59 @@
+# Data contract for Coinbase trades, bronze to silver (ODCS v3.2.0). Checked in CI by the
+# platform's tenant-contracts workflow: schema, namespaces, and policy tags (ADR 14).
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:lakehouse-markets-data:contract:trades
+name: trades
+version: 0.1.0
+status: draft
+tenant: markets-data
+domain: markets
+tags: [market-data, crypto, stream, public-data]
+description:
+  purpose: Every Coinbase trade on the tracked products, typed and deduplicated, for OHLCV and market analytics.
+  usage: Read markets_silver.trades; one row per (product_id, trade_id). Bronze is for replay and audit.
+  limitations: Public market data, no PII. Trades during a producer outage are missing (gaps in trade_id); a Kafka outage longer than 7 days loses records.
+schema:
+  - name: trades_bronze
+    physicalName: lakehouse.markets_bronze.trades
+    physicalType: table
+    logicalType: object
+    description: Every Kafka record as it arrived, appended; the input to any replay.
+    properties:
+      - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: public, description: Product id (the producer's key) }
+      - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: public, description: The record value as sent (JSON) }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: internal }
+      - { name: kafka_timestamp, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: trades_rejects
+    physicalName: lakehouse.markets_bronze.trades_rejects
+    physicalType: table
+    logicalType: object
+    description: Records that failed a rule, with the first rule they failed (markets_data.trades.REJECT_RULES).
+    properties:
+      - { name: reason, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: public }
+      - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: public }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: internal }
+      - { name: kafka_timestamp, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: rejected_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: trades
+    physicalName: lakehouse.markets_silver.trades
+    physicalType: table
+    logicalType: object
+    description: One row per trade, typed; Coinbase's resends after a reconnect are dropped.
+    properties:
+      - { name: trade_id, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: "Coinbase trade id, increasing per product" }
+      - { name: product_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public, description: e.g. BTC-USD }
+      - { name: base_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: quote_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: price, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "Quote currency per unit of base, above 0" }
+      - { name: size, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "Units of base, above 0" }
+      - { name: side, logicalType: string, physicalType: varchar, required: true, classification: public, description: "The taker's side, buy or sell" }
+      - { name: trade_time, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: public }
+      - { name: sequence, logicalType: integer, physicalType: bigint, required: false, classification: public }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }

@@ -35,6 +35,28 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
     mem_limit: 128m
 
+  # The Kappa stream, as the platform runs it: Kafka -> markets_bronze.trades -> markets_silver.trades.
+  # `make stream` runs it here; checkpoints live in this project's own volume.
+  trades-stream:
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:dev
+    profiles: [feed]
+    entrypoint: ["python3", "-m", "markets_data.submit", "trades_stream.py"]
+    networks: [data, stream]
+    environment:
+      TENANT: markets-data
+      KAFKA_BOOTSTRAP: kafka:9092
+      OPENLINEAGE_URL: http://marquez:5000
+      AWS_REGION: us-east-1
+      POLARIS_ENV_FILE: /run/tenant-secrets/polaris.env
+    volumes:
+      - type: volume
+        source: platform-secrets
+        target: /run/tenant-secrets
+        read_only: true
+        volume: { subpath: tenants/markets-data }
+      - trades-state:/state
+    mem_limit: 1280m
+
 networks:
   data: { external: true, name: open-lakehouse_data }
   stream: { external: true, name: open-lakehouse_stream }
@@ -42,3 +64,4 @@ networks:
 
 volumes:
   platform-secrets: { external: true, name: open-lakehouse_platform-secrets }
+  trades-state:

@@ -2,7 +2,8 @@
 
 import dagster as dg
 
-from markets_data.definitions import defs, spark_submit
+from markets_data.definitions import defs
+from markets_data.submit import spark_submit
 
 
 def test_code_location_loads():

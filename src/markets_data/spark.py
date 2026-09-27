@@ -8,7 +8,10 @@ mounts for this tenant alone. No storage keys: Polaris vends short-lived, table-
 from __future__ import annotations
 
 import os
+import socket
+import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pyspark.sql import SparkSession
 
@@ -22,11 +25,37 @@ def credentials(path: str | None = None) -> tuple[str, str]:
     return env["POLARIS_CLIENT_ID"], env["POLARIS_CLIENT_SECRET"]
 
 
+def lineage(builder: SparkSession.Builder, app: str) -> SparkSession.Builder:
+    """OpenLineage events to the platform's Marquez (OPENLINEAGE_URL), when it is up.
+
+    Lineage is observability, never a dependency: without Marquez the job runs anyway.
+    """
+    url = os.environ.get("OPENLINEAGE_URL", "")
+    if not url:
+        return builder
+    u = urlparse(url)
+    try:
+        socket.create_connection((u.hostname, u.port or 80), timeout=0.5).close()
+    except OSError:
+        print(f"[lineage] {url} unreachable; running without lineage events", file=sys.stderr)
+        return builder
+    return (
+        builder.config("spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener")
+        .config("spark.openlineage.transport.type", "http")
+        .config("spark.openlineage.transport.url", url)
+        .config("spark.openlineage.namespace", os.environ.get("TENANT", "markets-data"))
+        .config("spark.openlineage.parentJobName", app)
+        # Its Iceberg metrics hook fails on every streaming batch (OpenLineage#4950); lineage
+        # itself is unaffected.
+        .config("spark.openlineage.vendors.iceberg.metricsReporterDisabled", "true")
+    )
+
+
 def session(app: str) -> SparkSession:
     client_id, secret = credentials()
     c = f"spark.sql.catalog.{CATALOG}"
     spark = (
-        SparkSession.builder.appName(app)
+        lineage(SparkSession.builder.appName(app), app)
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
         .config(c, "org.apache.iceberg.spark.SparkCatalog")
         .config(f"{c}.type", "rest")
