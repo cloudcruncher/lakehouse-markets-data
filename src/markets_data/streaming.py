@@ -16,19 +16,24 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
 CHECKPOINTS = os.environ.get("CHECKPOINTS", "/state/checkpoints")
-TRIGGER = os.environ.get("TRIGGER", "30 seconds")
-MAX_OFFSETS = int(os.environ.get("MAX_OFFSETS_PER_TRIGGER", "50000"))
+# Laptop scale (README "Volumes"): a commit every 2 minutes per query keeps the object store
+# quiet, and gold is hourly, so nobody waits on silver. A catch-up batch is capped at 10,000
+# records per partition set, which bounds its memory. Both are env knobs for a bigger machine.
+TRIGGER = os.environ.get("TRIGGER", "2 minutes")
+MAX_OFFSETS = int(os.environ.get("MAX_OFFSETS_PER_TRIGGER", "10000"))
 BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
 
 
-def bronze_start(spark: SparkSession, checkpoint: str, topic: str, table: str) -> str:
-    """Kafka offsets for bronze: the checkpoint's if it has one, else just past the table's."""
+def resume_start(spark: SparkSession, checkpoint: str, topic: str, tables: list[str]) -> str:
+    """Kafka offsets for a query: its checkpoint's if it has one, else just past the offsets its
+    tables already hold (a new /state volume then costs no re-read of the topic's 7 days)."""
     if os.path.isdir(f"{checkpoint}/offsets"):
         return "earliest"  # ignored by Spark: a checkpoint always wins
+    union = " UNION ALL ".join(f"SELECT kafka_partition, kafka_offset FROM {t}" for t in tables)
     held = {
         r.kafka_partition: r.next_offset
         for r in spark.sql(
-            f"SELECT kafka_partition, max(kafka_offset) + 1 AS next_offset FROM {table} GROUP BY 1"
+            f"SELECT kafka_partition, max(kafka_offset) + 1 AS next_offset FROM ({union}) GROUP BY 1"
         ).collect()
     }
     if not held:
@@ -36,7 +41,7 @@ def bronze_start(spark: SparkSession, checkpoint: str, topic: str, table: str) -
     partitions = AdminClient({"bootstrap.servers": BOOTSTRAP}).list_topics(topic, timeout=10)
     # -2 is Kafka's "earliest", for partitions bronze has no record from yet.
     offsets = {str(p): held.get(p, -2) for p in partitions.topics[topic].partitions}
-    print(f"[{table}] no bronze checkpoint: resuming after the table's offsets {offsets}", flush=True)
+    print(f"[{tables[0]}] no checkpoint: resuming after the tables' offsets {offsets}", flush=True)
     return json.dumps({topic: offsets})
 
 

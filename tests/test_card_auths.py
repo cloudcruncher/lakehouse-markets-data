@@ -84,3 +84,8 @@ def test_one_merchant_is_on_the_uk_sanctions_list_and_rare():
     assert len(listed) == 1 and listed[0]["value"]["merchant_country"] == "RU"
     share = listed[0]["weight"] / sum(c["weight"] for c in choices)
     assert share < 0.01
+
+
+def test_laptop_scale_is_about_one_authorisation_a_second():
+    mean_ms = sum(GOOD["localConfigs"]["throttleMs"]["bounds"]) / 2
+    assert 500 <= mean_ms <= 2000

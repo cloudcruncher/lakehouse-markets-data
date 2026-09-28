@@ -17,12 +17,13 @@ Replay (the Kappa part): a new table and checkpoint rebuild from the topic, whic
 
 from __future__ import annotations
 
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.streaming import StreamingQuery
 
 from markets_data import stream, trades
 from markets_data.spark import session
-from markets_data.streaming import CHECKPOINTS, TRIGGER, bronze_start, kafka, watch
+from markets_data.streaming import CHECKPOINTS, TRIGGER, kafka, resume_start, watch
 
 
 def merge_silver(batch: DataFrame, batch_id: int) -> None:
@@ -51,29 +52,34 @@ def merge_silver(batch: DataFrame, batch_id: int) -> None:
     parsed.unpersist()
 
 
-def main() -> None:
-    spark = session("markets-trades-stream")
+def start(spark: SparkSession) -> list[StreamingQuery]:
+    """Create the tables if needed and start both queries (bronze, silver)."""
     for ddl in (trades.BRONZE_DDL, trades.REJECTS_DDL, trades.SILVER_DDL):
         spark.sql(ddl)
-
-    checkpoint = f"{CHECKPOINTS}/trades_bronze"
+    bronze_cp, silver_cp = f"{CHECKPOINTS}/trades_bronze", f"{CHECKPOINTS}/trades_silver"
     bronze = (
-        stream.raw(kafka(spark, trades.TOPIC, bronze_start(spark, checkpoint, trades.TOPIC, trades.BRONZE)))
+        stream.raw(kafka(spark, trades.TOPIC, resume_start(spark, bronze_cp, trades.TOPIC, [trades.BRONZE])))
         .writeStream.queryName("trades_bronze")
-        .option("checkpointLocation", checkpoint)
+        .option("checkpointLocation", bronze_cp)
         .trigger(processingTime=TRIGGER)
         .toTable(trades.BRONZE)
     )
     silver = (
-        kafka(spark, trades.TOPIC)
+        kafka(
+            spark, trades.TOPIC, resume_start(spark, silver_cp, trades.TOPIC, [trades.SILVER, trades.REJECTS])
+        )
         .writeStream.queryName("trades_silver")
-        .option("checkpointLocation", f"{CHECKPOINTS}/trades_silver")
+        .option("checkpointLocation", silver_cp)
         .trigger(processingTime=TRIGGER)
         .foreachBatch(merge_silver)
         .start()
     )
     print(f"[trades] streaming {trades.TOPIC} -> {trades.BRONZE}, {trades.SILVER}", flush=True)
-    watch(bronze, silver)
+    return [bronze, silver]
+
+
+def main() -> None:
+    watch(*start(session("markets-trades-stream")))
 
 
 if __name__ == "__main__":

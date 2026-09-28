@@ -16,17 +16,36 @@ Replay (the Kappa part): a new table and checkpoint rebuild from the topic, whic
 
 from __future__ import annotations
 
-from pyspark.sql import DataFrame
+import time
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.streaming import StreamingQuery
 
 from markets_data import card_auths, card_stream
 from markets_data.spark import session
-from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, TRIGGER, bronze_start, kafka, watch
+from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, TRIGGER, kafka, resume_start, watch
+
+# The ECB fixes once a business day: reading markets_bronze.fx_rates from object storage every
+# batch only loads the store. The rates stay cached in the driver's memory and refresh hourly.
+FX_REFRESH_SECONDS = 3600
+_fx: dict = {"rates": None, "loaded": 0.0}
+
+
+def fx_rates(spark: SparkSession) -> DataFrame:
+    if _fx["rates"] is None or time.monotonic() - _fx["loaded"] > FX_REFRESH_SECONDS:
+        if _fx["rates"] is not None:
+            _fx["rates"].unpersist()
+        _fx["rates"] = card_stream.eur_rates(spark.table(card_auths.FX)).cache()
+        n = _fx["rates"].count()  # materialise the cache now, not in the middle of a join
+        _fx["loaded"] = time.monotonic()
+        print(f"[card-auths] {n} ECB rates cached", flush=True)
+    return _fx["rates"]
 
 
 def merge_silver(batch: DataFrame, batch_id: int) -> None:
     spark = batch.sparkSession
-    parsed = card_stream.parse(card_stream.raw(batch), spark.table(card_auths.FX)).persist()
+    parsed = card_stream.parse(card_stream.raw(batch), fx_rates(spark)).persist()
     good, bad = card_stream.valid(parsed), card_stream.rejected(parsed).persist()
     good.createOrReplaceTempView("card_auths_batch")
     bad.createOrReplaceTempView("card_auth_rejects_batch")
@@ -57,24 +76,27 @@ def merge_silver(batch: DataFrame, batch_id: int) -> None:
     parsed.unpersist()
 
 
-def main() -> None:
-    spark = session("markets-card-auths-stream")
+def start(spark: SparkSession) -> list[StreamingQuery]:
+    """Create the tables if needed and start both queries (bronze, silver)."""
     for ddl in (card_auths.BRONZE_DDL, card_auths.REJECTS_DDL, card_auths.SILVER_DDL):
         spark.sql(ddl)
-
-    checkpoint = f"{CHECKPOINTS}/card_auths_bronze"
-    start = bronze_start(spark, checkpoint, card_auths.TOPIC, card_auths.BRONZE)
+    bronze_cp, silver_cp = f"{CHECKPOINTS}/card_auths_bronze", f"{CHECKPOINTS}/card_auths_silver"
     bronze = (
-        card_stream.raw(kafka(spark, card_auths.TOPIC, start))
+        card_stream.raw(
+            kafka(
+                spark, card_auths.TOPIC, resume_start(spark, bronze_cp, card_auths.TOPIC, [card_auths.BRONZE])
+            )
+        )
         .writeStream.queryName("card_auths_bronze")
-        .option("checkpointLocation", checkpoint)
+        .option("checkpointLocation", bronze_cp)
         .trigger(processingTime=TRIGGER)
         .toTable(card_auths.BRONZE)
     )
+    silver_start = resume_start(spark, silver_cp, card_auths.TOPIC, [card_auths.SILVER, card_auths.REJECTS])
     silver = (
-        kafka(spark, card_auths.TOPIC)
+        kafka(spark, card_auths.TOPIC, silver_start)
         .writeStream.queryName("card_auths_silver")
-        .option("checkpointLocation", f"{CHECKPOINTS}/card_auths_silver")
+        .option("checkpointLocation", silver_cp)
         .trigger(processingTime=TRIGGER)
         .foreachBatch(merge_silver)
         .start()
@@ -82,7 +104,11 @@ def main() -> None:
     print(
         f"[card-auths] streaming {card_auths.TOPIC} -> {card_auths.BRONZE}, {card_auths.SILVER}", flush=True
     )
-    watch(bronze, silver)
+    return [bronze, silver]
+
+
+def main() -> None:
+    watch(*start(session("markets-card-auths-stream")))
 
 
 if __name__ == "__main__":

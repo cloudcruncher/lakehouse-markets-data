@@ -32,8 +32,8 @@ card-auths: ## Run the card-authorisation generator against the local platform's
 card-auths-sample: ## Print 5 generated card authorisations instead of sending them (needs the licence)
 	docker compose build -q card-auths && SHADOWTRAFFIC_ARGS="--stdout --sample 5" docker compose run --rm card-auths
 
-spark-check: build ## Both streams' Spark transforms on sample records, inside the image (no platform needed)
-	for check in check_stream.py check_card_auths.py; do \
+spark-check: build ## The streams' and gold's Spark transforms on sample records, inside the image (no platform needed)
+	for check in check_stream.py check_card_auths.py check_gold.py; do \
 	  docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
 	    ghcr.io/cloudcruncher/lakehouse-markets-data:dev --master "local[1]" /checks/$$check || exit 1; \
 	done
