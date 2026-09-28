@@ -11,13 +11,14 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 | ECB reference rates (Frankfurter API, daily) | `markets_bronze.fx_rates` | done |
 | Coinbase WebSocket trades (stream) | `markets.coinbase.trades` -> `markets_bronze.trades` -> `markets_silver.trades` | done |
 | Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` -> `markets_bronze.card_auths` -> `markets_silver.card_auths` (EUR), rejects -> `.dlq` | done |
-| Sanctions lists (OpenSanctions / HMT, daily) | `markets_bronze` | next |
+| UK Sanctions List (FCDO via OpenSanctions, daily) | `markets_bronze.sanctions_targets` -> `markets_silver.sanctions_names` | done |
 
 ## Working here
 
 ```bash
 make lint test        # seconds, no Docker
 make run              # against a local platform: in ../open-lakehouse run `make up` first
+make run ASSET=markets_bronze/sanctions_targets,markets_silver/sanctions_names  # the sanctions list
 make feed             # the Coinbase producer -> markets.coinbase.trades, against the local platform
 make stream           # the trades stream -> markets_bronze.trades, markets_silver.trades (resumes from /state)
 make card-stream      # the card-auths stream -> markets_bronze/silver.card_auths, rejects to the DLQ topic
@@ -79,3 +80,21 @@ before its day (`markets_bronze.fx_rates`, at most 7 days old). A record that fa
 is exactly once; the DLQ topic is at least once, so its consumers key on partition and offset.
 A known currency with no recent rate is rejected as "no ECB rate in the week before": the FX job
 is behind, and a replay after it catches up converts those records.
+
+## Sanctions list and merchant screening
+
+`jobs/sanctions.py` (Dagster, daily at 06:15 London) lands the UK Sanctions List (FCDO, as
+OpenSanctions republishes it; CC BY-NC) in `markets_bronze.sanctions_targets`, one row per target
+ever listed: MERGEd by id, with `delisted_at` once a target leaves the list. A list with fewer
+than 1,000 targets is treated as a broken download, not as mass delisting. Birth dates,
+addresses, phones and emails are never landed: screening doesn't need them.
+
+`markets_silver.sanctions_names` holds today's normalised names and aliases of listed
+organisations (people and vessels aren't merchants). `sanctions.normalise()` runs on both sides
+of a screen: lower case, no accents or punctuation, no legal forms (`PJSC "Aeroflot"` ->
+`aeroflot`), at least 4 characters. Matching is exact on those names; transliterations need a
+fuzzy matcher, which is not built yet. The card generator has one listed merchant (Aeroflot,
+~0.6% of authorisations) so screening has something real to find.
+
+Memory: both streams run with a 512 MB driver heap and `MALLOC_ARENA_MAX=2` (`submit.py`).
+Measured on 28 Sep 2026, that took a stream from 1195 to about 660 MiB in its 1280 MB service.

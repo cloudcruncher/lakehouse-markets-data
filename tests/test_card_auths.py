@@ -75,3 +75,12 @@ def test_the_stream_writes_the_tenants_topics():
 
 def test_the_stream_job_is_shipped():
     assert (JOBS / "card_auths_stream.py").is_file()
+
+
+def test_one_merchant_is_on_the_uk_sanctions_list_and_rare():
+    # "Aeroflot" is PJSC Aeroflot on the FCDO list: screening (markets_gold.sanctions_hits) must find it.
+    choices = GOOD["vars"]["merchant"]["choices"]
+    listed = [c for c in choices if c["value"]["merchant_name"] == "Aeroflot"]
+    assert len(listed) == 1 and listed[0]["value"]["merchant_country"] == "RU"
+    share = listed[0]["weight"] / sum(c["weight"] for c in choices)
+    assert share < 0.01
