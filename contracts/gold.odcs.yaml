@@ -1,0 +1,71 @@
+# Data contract for the markets gold data products (ODCS v3.2.0). Checked in CI by the
+# platform's tenant-contracts workflow: schema, namespaces, and policy tags (ADR 14).
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:lakehouse-markets-data:contract:gold
+name: markets_gold
+version: 0.1.0
+status: draft
+tenant: markets-data
+domain: markets
+tags: [gold, data-product, market-data, payments, sanctions]
+description:
+  purpose: "Data products for every colleague: crypto candles, daily card authorisations in euro, and merchants on the UK Sanctions List."
+  usage: "Rebuilt hourly at :20 (Dagster asset gold); five asset checks run after each build. Candles and daily totals rebuild the last two days; sanctions_hits is replaced whole."
+  limitations: "Laptop scale: two Coinbase books and ~1 card authorisation a second (synthetic). Sanctions matching is exact on normalised names. No card tokens or people."
+schema:
+  - name: crypto_ohlcv_1m
+    physicalName: lakehouse.markets_gold.crypto_ohlcv_1m
+    physicalType: table
+    logicalType: object
+    description: "One-minute candles per Coinbase product; open and close by (trade_time, trade_id)."
+    properties:
+      - { name: product_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public }
+      - { name: base_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: quote_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: minute, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public }
+      - { name: open, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public }
+      - { name: high, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public }
+      - { name: low, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public }
+      - { name: close, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public }
+      - { name: volume, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: Units of base traded }
+      - { name: notional, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: Quote currency traded }
+      - { name: vwap, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: notional / volume }
+      - { name: trades, logicalType: integer, physicalType: bigint, required: true, classification: public }
+      - { name: built_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: card_auth_daily
+    physicalName: lakehouse.markets_gold.card_auth_daily
+    physicalType: table
+    logicalType: object
+    description: "Card authorisations per day (UTC), merchant country, currency and channel, in euro."
+    properties:
+      - { name: auth_date, logicalType: date, physicalType: date, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: merchant_country, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 2, classification: internal }
+      - { name: currency, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 3, classification: internal }
+      - { name: channel, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 4, classification: internal }
+      - { name: auths, logicalType: integer, physicalType: bigint, required: true, classification: internal }
+      - { name: approved, logicalType: integer, physicalType: bigint, required: true, classification: internal }
+      - { name: approval_rate, logicalType: number, physicalType: double, required: true, classification: internal, description: "approved / auths, 0 to 1" }
+      - { name: amount_eur, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal }
+      - { name: approved_amount_eur, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal }
+      - { name: avg_amount_eur, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal }
+      - { name: built_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: sanctions_hits
+    physicalName: lakehouse.markets_gold.sanctions_hits
+    physicalType: table
+    logicalType: object
+    description: "Merchants whose normalised name matches an organisation on today's UK Sanctions List."
+    properties:
+      - { name: merchant_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: merchant_name, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: merchant_country, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: name_norm, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: target_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public }
+      - { name: target_schema, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: program_ids, logicalType: string, physicalType: varchar, required: false, classification: public }
+      - { name: auths, logicalType: integer, physicalType: bigint, required: true, classification: internal }
+      - { name: amount_eur, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal }
+      - { name: first_auth, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: last_auth, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: list_date, logicalType: date, physicalType: date, required: true, classification: internal }
+      - { name: screened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }

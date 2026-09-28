@@ -12,6 +12,7 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 | Coinbase WebSocket trades (stream) | `markets.coinbase.trades` -> `markets_bronze.trades` -> `markets_silver.trades` | done |
 | Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` -> `markets_bronze.card_auths` -> `markets_silver.card_auths` (EUR), rejects -> `.dlq` | done |
 | UK Sanctions List (FCDO via OpenSanctions, daily) | `markets_bronze.sanctions_targets` -> `markets_silver.sanctions_names` | done |
+| Gold (hourly): candles, daily card authorisations, sanctions hits | `markets_gold.crypto_ohlcv_1m`, `card_auth_daily`, `sanctions_hits` | done |
 
 ## Working here
 
@@ -57,7 +58,7 @@ loads the code location.
 
 ## Card authorisations (ShadowTraffic)
 
-`generators/card-auths/` is ShadowTraffic with this team's config: ~10 authorisations a second
+`generators/card-auths/` is ShadowTraffic with this team's config: ~1 authorisation a second (laptop scale; see Volumes)
 from 5,000 cards (keyed by card token) at 16 merchants, in seven currencies that all have an ECB
 rate, plus ~1% malformed records for the stream's dead-letter topic. It ships as
 `lakehouse-markets-data:card-auths-<version>` and runs as a tenant service.
@@ -98,3 +99,33 @@ fuzzy matcher, which is not built yet. The card generator has one listed merchan
 
 Memory: both streams run with a 512 MB driver heap and `MALLOC_ARENA_MAX=2` (`submit.py`).
 Measured on 28 Sep 2026, that took a stream from 1195 to about 660 MiB in its 1280 MB service.
+
+## Gold data products
+
+`jobs/gold.py` (Dagster multi-asset `gold`, hourly at :20) builds three tables readable by every
+colleague: `crypto_ohlcv_1m` (one-minute candles with VWAP), `card_auth_daily` (per day, merchant
+country, currency and channel, in euro, with approval rate) and `sanctions_hits` (merchants whose
+normalised name is on today's list). Candles and daily totals rebuild the last two days and
+replace those day partitions; hits are replaced whole, so a delisted match drops out. Five asset
+checks (`gold.CHECKS`) run after each build and show in Dagster. No card token reaches gold.
+
+## Streams in one application
+
+The platform runs both streams as one service (`jobs/streams.py`): four queries in one Spark
+driver, which saves ~1 GB against two drivers. Each query keeps its own checkpoint, so either
+stream can still be replayed alone, and a query without a checkpoint resumes after the offsets
+its tables already hold. `trades_stream.py` and `card_auths_stream.py` still run alone
+(`make stream`, `make card-stream`). The card stream caches the ECB rates and reloads them hourly.
+
+## Volumes (laptop scale)
+
+The platform runs on one 16 GB laptop, so the defaults prove every path at small volume rather
+than load. Each is one setting on a bigger machine:
+
+| What | Laptop default | Where to scale it |
+|---|---|---|
+| Coinbase books | BTC-EUR, ETH-EUR (~1 trade/s) | `PRODUCTS` env (e.g. add BTC-USD, ETH-USD, SOL-USD: ~7/s) |
+| Card authorisations | ~1/s, ~1% malformed | `throttleMs` in `generators/card-auths/card-auths.json` |
+| Stream commits | every 2 minutes per query | `TRIGGER` env |
+| Catch-up batch | at most 10,000 records | `MAX_OFFSETS_PER_TRIGGER` env |
+| Driver heap | 512m per stream, 768m for both / batch jobs | `DRIVER_MEMORY` in `submit.py`, or `SPARK_DRIVER_MEMORY` |

@@ -1,6 +1,6 @@
 [project]
 name = "markets-data"
-version = "0.6.0"
+version = "0.7.0"
 description = "Markets & Payments Intelligence: a tenant of the open-lakehouse platform (ADR 14)."
 readme = "README.md"
 # The platform's Spark base image runs Python 3.10; code and tests must run there too.

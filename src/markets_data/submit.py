@@ -14,7 +14,8 @@ SPARK_SUBMIT = "/opt/spark/bin/spark-submit"
 # The streams run for weeks in a 1280 MB service: the JVM needs ~450 MB beside its heap
 # (metaspace ~210 MB, ~300 threads, code cache), and a stream's live heap is ~250 MB after GC
 # (measured 28 Sep 2026). Batch jobs run in the code server and keep the larger default.
-DRIVER_MEMORY = {"trades_stream.py": "512m", "card_auths_stream.py": "512m"}
+# Both streams in one application (streams.py, the platform's service) hold two live heaps.
+DRIVER_MEMORY = {"trades_stream.py": "512m", "card_auths_stream.py": "512m", "streams.py": "768m"}
 
 
 def spark_submit(script: str) -> list[str]:

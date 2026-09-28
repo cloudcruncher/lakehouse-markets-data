@@ -66,8 +66,45 @@ sanctions_daily = dg.ScheduleDefinition(
     default_status=dg.DefaultScheduleStatus.RUNNING,
 )
 
+GOLD_SPECS = [
+    (
+        ["markets_gold", "crypto_ohlcv_1m"],
+        "One-minute candles per Coinbase product: open, high, low, close, volume, VWAP.",
+        ["candles_are_consistent", "one_candle_per_product_minute"],
+    ),
+    (
+        ["markets_gold", "card_auth_daily"],
+        "Card authorisations per day, merchant country, currency and channel, in euro, with approval rate.",
+        ["approval_rate_is_a_share", "daily_counts_match_silver"],
+    ),
+    (
+        ["markets_gold", "sanctions_hits"],
+        "Merchants whose name matches an organisation on today's UK Sanctions List.",
+        ["hits_are_on_todays_list"],
+    ),
+]
+
+
+@dg.multi_asset(
+    specs=[
+        dg.AssetSpec(key, group_name="gold", owners=OWNERS, kinds={"spark", "iceberg"}, description=desc)
+        for key, desc, _ in GOLD_SPECS
+    ],
+    check_specs=[dg.AssetCheckSpec(c, asset=key) for key, _, checks in GOLD_SPECS for c in checks],
+)
+def gold(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
+    return pipes.run(command=spark_submit("gold.py"), context=context).get_results()
+
+
+gold_hourly = dg.ScheduleDefinition(
+    name="gold_hourly",
+    target=[gold],
+    cron_schedule="20 * * * *",  # off the hour, when the platform's own jobs run
+    default_status=dg.DefaultScheduleStatus.RUNNING,
+)
+
 defs = dg.Definitions(
-    assets=[fx_rates, sanctions],
-    schedules=[fx_daily, sanctions_daily],
+    assets=[fx_rates, sanctions, gold],
+    schedules=[fx_daily, sanctions_daily, gold_hourly],
     resources={"pipes": dg.PipesSubprocessClient()},
 )

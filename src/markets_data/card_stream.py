@@ -27,7 +27,7 @@ def parse(bronze: DataFrame, fx: DataFrame) -> DataFrame:
     """Typed authorisations in euro, each with `reject_reason` (NULL when valid).
 
     Each takes the latest ECB fixing on or before its day (at most FX_MAX_AGE_DAYS old); euro
-    itself converts at 1.
+    itself converts at 1. `fx` is markets_bronze.fx_rates, or already eur_rates() of it.
     """
     a = F.from_json("payload", card_auths.VALUE_SCHEMA)
     typed = bronze.select(
@@ -42,7 +42,7 @@ def parse(bronze: DataFrame, fx: DataFrame) -> DataFrame:
         a["auth_time"].cast("timestamp").alias("auth_time"),
     ).withColumn("auth_date", F.to_date("auth_time"))
 
-    rates = F.broadcast(eur_rates(fx))
+    rates = F.broadcast(fx if "fx_quote" in fx.columns else eur_rates(fx))
     known = F.broadcast(rates.select(F.col("fx_quote").alias("known_quote")).distinct())
     typed = typed.join(known, typed.currency == known.known_quote, "left").select(
         typed["*"], (F.col("known_quote").isNotNull() | (F.col("currency") == "EUR")).alias("currency_known")

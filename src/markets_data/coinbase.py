@@ -20,7 +20,8 @@ from confluent_kafka import Producer
 
 FEED = "wss://ws-feed.exchange.coinbase.com"
 TOPIC = "markets.coinbase.trades"
-PRODUCTS = ("BTC-USD", "ETH-USD", "SOL-USD", "BTC-EUR", "ETH-EUR")
+# Laptop scale: the two euro books trade ~1/s together (the USD books ~7/s). Scale up with PRODUCTS.
+PRODUCTS = ("BTC-EUR", "ETH-EUR")
 # Price and size stay strings, as Coinbase sends them: decimals are parsed once, in the stream.
 FIELDS = ("trade_id", "product_id", "price", "size", "side", "time", "sequence")
 LOG_EVERY_S = 60
