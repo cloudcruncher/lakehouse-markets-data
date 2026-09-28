@@ -115,103 +115,160 @@
           ]
         },
         "merchant": {
-          "_gen": "oneOf",
+          "_gen": "weightedOneOf",
           "choices": [
             {
-              "merchant_id": "m-0001",
-              "merchant_name": "Rewe City Koeln",
-              "mcc": "5411",
-              "merchant_country": "DE"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0001",
+                "merchant_name": "Rewe City Koeln",
+                "mcc": "5411",
+                "merchant_country": "DE"
+              }
             },
             {
-              "merchant_id": "m-0002",
-              "merchant_name": "Tesco Express Camden",
-              "mcc": "5411",
-              "merchant_country": "GB"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0002",
+                "merchant_name": "Tesco Express Camden",
+                "mcc": "5411",
+                "merchant_country": "GB"
+              }
             },
             {
-              "merchant_id": "m-0003",
-              "merchant_name": "Carrefour Market Lyon",
-              "mcc": "5411",
-              "merchant_country": "FR"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0003",
+                "merchant_name": "Carrefour Market Lyon",
+                "mcc": "5411",
+                "merchant_country": "FR"
+              }
             },
             {
-              "merchant_id": "m-0004",
-              "merchant_name": "Shell Recharge A2",
-              "mcc": "5541",
-              "merchant_country": "NL"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0004",
+                "merchant_name": "Shell Recharge A2",
+                "mcc": "5541",
+                "merchant_country": "NL"
+              }
             },
             {
-              "merchant_id": "m-0005",
-              "merchant_name": "Deutsche Bahn Online",
-              "mcc": "4112",
-              "merchant_country": "DE"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0005",
+                "merchant_name": "Deutsche Bahn Online",
+                "mcc": "4112",
+                "merchant_country": "DE"
+              }
             },
             {
-              "merchant_id": "m-0006",
-              "merchant_name": "Ryanair",
-              "mcc": "4511",
-              "merchant_country": "IE"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0006",
+                "merchant_name": "Ryanair",
+                "mcc": "4511",
+                "merchant_country": "IE"
+              }
             },
             {
-              "merchant_id": "m-0007",
-              "merchant_name": "Zalando SE",
-              "mcc": "5651",
-              "merchant_country": "DE"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0007",
+                "merchant_name": "Zalando SE",
+                "mcc": "5651",
+                "merchant_country": "DE"
+              }
             },
             {
-              "merchant_id": "m-0008",
-              "merchant_name": "Starbucks Zurich HB",
-              "mcc": "5814",
-              "merchant_country": "CH"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0008",
+                "merchant_name": "Starbucks Zurich HB",
+                "mcc": "5814",
+                "merchant_country": "CH"
+              }
             },
             {
-              "merchant_id": "m-0009",
-              "merchant_name": "IKEA Stockholm",
-              "mcc": "5712",
-              "merchant_country": "SE"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0009",
+                "merchant_name": "IKEA Stockholm",
+                "mcc": "5712",
+                "merchant_country": "SE"
+              }
             },
             {
-              "merchant_id": "m-0010",
-              "merchant_name": "Zabka Warszawa",
-              "mcc": "5499",
-              "merchant_country": "PL"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0010",
+                "merchant_name": "Zabka Warszawa",
+                "mcc": "5499",
+                "merchant_country": "PL"
+              }
             },
             {
-              "merchant_id": "m-0011",
-              "merchant_name": "Lawson Shinjuku",
-              "mcc": "5499",
-              "merchant_country": "JP"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0011",
+                "merchant_name": "Lawson Shinjuku",
+                "mcc": "5499",
+                "merchant_country": "JP"
+              }
             },
             {
-              "merchant_id": "m-0012",
-              "merchant_name": "Amazon EU Sarl",
-              "mcc": "5942",
-              "merchant_country": "LU"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0012",
+                "merchant_name": "Amazon EU Sarl",
+                "mcc": "5942",
+                "merchant_country": "LU"
+              }
             },
             {
-              "merchant_id": "m-0013",
-              "merchant_name": "Uber BV",
-              "mcc": "4121",
-              "merchant_country": "NL"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0013",
+                "merchant_name": "Uber BV",
+                "mcc": "4121",
+                "merchant_country": "NL"
+              }
             },
             {
-              "merchant_id": "m-0014",
-              "merchant_name": "Booking.com",
-              "mcc": "4722",
-              "merchant_country": "NL"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0014",
+                "merchant_name": "Booking.com",
+                "mcc": "4722",
+                "merchant_country": "NL"
+              }
             },
             {
-              "merchant_id": "m-0015",
-              "merchant_name": "Apple Online Store",
-              "mcc": "5732",
-              "merchant_country": "US"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0015",
+                "merchant_name": "Apple Online Store",
+                "mcc": "5732",
+                "merchant_country": "US"
+              }
             },
             {
-              "merchant_id": "m-0016",
-              "merchant_name": "Walgreens Chicago",
-              "mcc": "5912",
-              "merchant_country": "US"
+              "weight": 10,
+              "value": {
+                "merchant_id": "m-0016",
+                "merchant_name": "Walgreens Chicago",
+                "mcc": "5912",
+                "merchant_country": "US"
+              }
+            },
+            {
+              "weight": 1,
+              "value": {
+                "merchant_id": "m-0017",
+                "merchant_name": "Aeroflot",
+                "mcc": "4511",
+                "merchant_country": "RU"
+              }
             }
           ]
         }

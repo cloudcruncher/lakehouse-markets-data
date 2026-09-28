@@ -1,0 +1,47 @@
+# Data contract for the UK Sanctions List, bronze to silver (ODCS v3.2.0). Checked in CI by the
+# platform's tenant-contracts workflow: schema, namespaces, and policy tags (ADR 14).
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:lakehouse-markets-data:contract:sanctions
+name: sanctions
+version: 0.1.0
+status: draft
+tenant: markets-data
+domain: markets
+tags: [reference-data, sanctions, compliance, public-data]
+description:
+  purpose: The UK Sanctions List (FCDO) for screening card-authorisation merchants.
+  usage: Screen on markets_silver.sanctions_names (normalised with markets_data.sanctions.normalise); bronze keeps every target ever listed, for audit.
+  limitations: "Source: OpenSanctions (CC BY-NC 4.0), refreshed daily at 06:15 London; a designation made today may appear tomorrow. Birth dates, addresses, phones and emails are never landed (data minimisation). Screening is exact on normalised names: transliterations and misspellings need a fuzzy matcher (not yet)."
+schema:
+  - name: sanctions_targets
+    physicalName: lakehouse.markets_bronze.sanctions_targets
+    physicalType: table
+    logicalType: object
+    description: "One row per target ever listed, MERGEd by target_id; delisted_at once it leaves the list."
+    properties:
+      - { name: target_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public, description: OpenSanctions entity id }
+      - { name: schema, logicalType: string, physicalType: varchar, required: true, classification: public, description: "Person, Organization, Company, Vessel, ..." }
+      - { name: name, logicalType: string, physicalType: varchar, required: true, classification: confidential, description: "Designated name; for people, personal data made public by the designation" }
+      - { name: aliases, logicalType: string, physicalType: varchar, required: false, classification: confidential, description: "';'-separated" }
+      - { name: countries, logicalType: string, physicalType: varchar, required: false, classification: public, description: "ISO 3166 alpha-2, ';'-separated" }
+      - { name: program_ids, logicalType: string, physicalType: varchar, required: false, classification: public, description: "Sanctions regimes, e.g. GB-RUS" }
+      - { name: sanctions, logicalType: string, physicalType: varchar, required: false, classification: public, description: The designation text }
+      - { name: first_seen, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: false, classification: public }
+      - { name: last_seen, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: false, classification: public }
+      - { name: last_change, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: false, classification: public }
+      - { name: delisted_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: false, classification: public, description: "NULL while listed" }
+      - { name: source, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: sanctions_names
+    physicalName: lakehouse.markets_silver.sanctions_names
+    physicalType: table
+    logicalType: object
+    description: "Today's list: one row per normalised name or alias of each listed organisation (people and vessels excluded: merchants are businesses)."
+    properties:
+      - { name: target_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public }
+      - { name: schema, logicalType: string, physicalType: varchar, required: true, classification: public }
+      - { name: name_norm, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: "Lower case, no accents, punctuation or legal forms; at least 4 characters" }
+      - { name: countries, logicalType: string, physicalType: varchar, required: false, classification: public }
+      - { name: program_ids, logicalType: string, physicalType: varchar, required: false, classification: public }
+      - { name: list_date, logicalType: date, physicalType: date, required: true, classification: internal, description: The day the list was fetched }
