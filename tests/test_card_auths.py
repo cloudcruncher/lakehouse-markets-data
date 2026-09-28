@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+from markets_data import card_auths
+from markets_data.submit import JOBS
+
 CONFIG = json.loads((Path(__file__).parents[1] / "generators/card-auths/card-auths.json").read_text())
 GOOD, BAD = CONFIG["generators"]
 # Currencies with an ECB reference rate (markets_bronze.fx_rates), plus the base.
@@ -38,3 +41,37 @@ def test_kafka_comes_from_the_platform_not_the_file():
         "_gen": "env",
         "var": "KAFKA_BOOTSTRAP",
     }
+
+
+# The stream's rules and layouts (markets_data.card_auths); tests/spark checks them on records.
+def test_every_rule_has_a_distinct_reason():
+    reasons = [r for r, _ in card_auths.REJECT_RULES]
+    assert len(reasons) == len(set(reasons))
+
+
+def test_a_malformed_amount_is_named_before_the_missing_card_token():
+    # The generator's malformed records have no card_token; the reason should say what's wrong.
+    reasons = [r for r, _ in card_auths.REJECT_RULES]
+    assert reasons.index("amount is not a positive decimal") < reasons.index("key is not the card token")
+    assert reasons.index("currency is not one the ECB fixes") < reasons.index("key is not the card token")
+
+
+def test_channel_rule_matches_the_generator():
+    channels = {c["value"] for c in GOOD["value"]["channel"]["choices"]}
+    assert channels == set(card_auths.CHANNELS)
+    assert "channel NOT IN ('pos', 'contactless', 'ecom')" in card_auths.reject_reason_sql()
+
+
+def test_silver_ddl_has_the_silver_columns_in_order():
+    body = card_auths.SILVER_DDL.split("(", 1)[1].split(") USING", 1)[0]
+    cols = [c.split()[0] for c in body.replace("\n", " ").split(", ")]
+    assert cols == card_auths.SILVER_COLUMNS
+
+
+def test_the_stream_writes_the_tenants_topics():
+    assert card_auths.TOPIC == GOOD["topic"]
+    assert card_auths.DLQ_TOPIC == f"{card_auths.TOPIC}.dlq"
+
+
+def test_the_stream_job_is_shipped():
+    assert (JOBS / "card_auths_stream.py").is_file()

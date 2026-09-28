@@ -23,17 +23,22 @@ feed: build ## Run the Coinbase producer against the local platform's Kafka (Ctr
 stream: build ## Run the trades stream against the local platform (Ctrl-C stops it; resumes from /state)
 	docker compose run --rm trades-stream
 
+card-stream: build ## Run the card-auths stream -> markets_bronze.card_auths, markets_silver.card_auths (resumes from /state)
+	docker compose run --rm card-auths-stream
+
 card-auths: ## Run the card-authorisation generator against the local platform's Kafka (needs the licence)
 	docker compose build card-auths && docker compose run --rm card-auths
 
 card-auths-sample: ## Print 5 generated card authorisations instead of sending them (needs the licence)
 	docker compose build -q card-auths && SHADOWTRAFFIC_ARGS="--stdout --sample 5" docker compose run --rm card-auths
 
-spark-check: build ## The stream's Spark transforms on sample records, inside the image (no platform needed)
-	docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
-	  ghcr.io/cloudcruncher/lakehouse-markets-data:dev --master "local[1]" /checks/check_stream.py
+spark-check: build ## Both streams' Spark transforms on sample records, inside the image (no platform needed)
+	for check in check_stream.py check_card_auths.py; do \
+	  docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
+	    ghcr.io/cloudcruncher/lakehouse-markets-data:dev --master "local[1]" /checks/$$check || exit 1; \
+	done
 
 contracts: ## The platform's contract check, as CI runs it (needs ../open-lakehouse)
 	uv run --quiet ../open-lakehouse/contracts/check.py --tenant markets-data --dir contracts
 
-.PHONY: help lint test build run feed card-auths card-auths-sample stream spark-check contracts
+.PHONY: help lint test build run feed card-stream card-auths card-auths-sample stream spark-check contracts

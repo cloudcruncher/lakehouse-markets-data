@@ -10,8 +10,8 @@ tables in `markets_bronze` / `markets_silver` / `markets_gold`, and their contra
 |---|---|---|
 | ECB reference rates (Frankfurter API, daily) | `markets_bronze.fx_rates` | done |
 | Coinbase WebSocket trades (stream) | `markets.coinbase.trades` -> `markets_bronze.trades` -> `markets_silver.trades` | done |
-| Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` (generator done) -> `markets_bronze` | next |
-| Sanctions lists (OpenSanctions / HMT, daily) | `markets_bronze` | planned |
+| Card authorisations (ShadowTraffic, stream) | `markets.payments.card-auths` -> `markets_bronze.card_auths` -> `markets_silver.card_auths` (EUR), rejects -> `.dlq` | done |
+| Sanctions lists (OpenSanctions / HMT, daily) | `markets_bronze` | next |
 
 ## Working here
 
@@ -20,7 +20,8 @@ make lint test        # seconds, no Docker
 make run              # against a local platform: in ../open-lakehouse run `make up` first
 make feed             # the Coinbase producer -> markets.coinbase.trades, against the local platform
 make stream           # the trades stream -> markets_bronze.trades, markets_silver.trades (resumes from /state)
-make spark-check      # the stream's Spark transforms on sample records, inside the image (~10 s)
+make card-stream      # the card-auths stream -> markets_bronze/silver.card_auths, rejects to the DLQ topic
+make spark-check      # both streams' Spark transforms on sample records, inside the image (~20 s)
 make card-auths-sample  # 5 generated card authorisations, printed (needs the licence, see below)
 make contracts        # the platform's contract check, as CI runs it
 ```
@@ -65,3 +66,16 @@ team stores it once from the platform repo with
 `make tenant-secret TENANT=markets-data NAME=shadowtraffic FILE=<licence.env>`. Local runs here
 and the platform's service read the same file. Without it (the platform's CI) the generator
 idles and says why; when the trial expires, store the renewed file the same way.
+
+## The card-authorisation stream
+
+`jobs/card_auths_stream.py` is the second Kappa stream, run as the tenant service
+`card-auths-stream` with its own `/state` (so it fails, restarts and replays apart from trades).
+It shares the trades stream's shape (`streaming.py`): bronze appends every record; silver MERGEs
+each valid authorisation once by `auth_id`, converted to euro at the latest ECB fixing on or
+before its day (`markets_bronze.fx_rates`, at most 7 days old). A record that fails a rule
+(`card_auths.REJECT_RULES`) lands in `markets_bronze.card_auths_rejects` with the reason and on
+`markets.payments.card-auths.dlq` as JSON (reason, topic, partition, offset, payload). The table
+is exactly once; the DLQ topic is at least once, so its consumers key on partition and offset.
+A known currency with no recent rate is rejected as "no ECB rate in the week before": the FX job
+is behind, and a replay after it catches up converts those records.
