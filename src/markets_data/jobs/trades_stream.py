@@ -17,53 +17,12 @@ Replay (the Kappa part): a new table and checkpoint rebuild from the topic, whic
 
 from __future__ import annotations
 
-import json
-import os
-import time
-
-from confluent_kafka.admin import AdminClient
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from markets_data import stream, trades
 from markets_data.spark import session
-
-CHECKPOINTS = os.environ.get("CHECKPOINTS", "/state/checkpoints")
-TRIGGER = os.environ.get("TRIGGER", "30 seconds")
-MAX_OFFSETS = int(os.environ.get("MAX_OFFSETS_PER_TRIGGER", "50000"))
-BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
-
-
-def bronze_start(spark: SparkSession, checkpoint: str) -> str:
-    """Kafka offsets for bronze: the checkpoint's if it has one, else just past the table's."""
-    if os.path.isdir(f"{checkpoint}/offsets"):
-        return "earliest"  # ignored by Spark: a checkpoint always wins
-    held = {
-        r.kafka_partition: r.next_offset
-        for r in spark.sql(
-            f"SELECT kafka_partition, max(kafka_offset) + 1 AS next_offset FROM {trades.BRONZE} GROUP BY 1"
-        ).collect()
-    }
-    if not held:
-        return "earliest"
-    topic = AdminClient({"bootstrap.servers": BOOTSTRAP}).list_topics(trades.TOPIC, timeout=10)
-    # -2 is Kafka's "earliest", for partitions bronze has no record from yet.
-    offsets = {str(p): held.get(p, -2) for p in topic.topics[trades.TOPIC].partitions}
-    print(f"[trades] no bronze checkpoint: resuming after the table's offsets {offsets}", flush=True)
-    return json.dumps({trades.TOPIC: offsets})
-
-
-def kafka(spark: SparkSession, starting: str = "earliest") -> DataFrame:
-    return (
-        spark.readStream.format("kafka")
-        .option("kafka.bootstrap.servers", BOOTSTRAP)
-        .option("subscribe", trades.TOPIC)
-        .option("startingOffsets", starting)
-        .option("maxOffsetsPerTrigger", MAX_OFFSETS)
-        # Retention may delete records a stopped stream never read: note it, don't stop.
-        .option("failOnDataLoss", "false")
-        .load()
-    )
+from markets_data.streaming import CHECKPOINTS, TRIGGER, bronze_start, kafka, watch
 
 
 def merge_silver(batch: DataFrame, batch_id: int) -> None:
@@ -99,14 +58,14 @@ def main() -> None:
 
     checkpoint = f"{CHECKPOINTS}/trades_bronze"
     bronze = (
-        stream.raw(kafka(spark, bronze_start(spark, checkpoint)))
+        stream.raw(kafka(spark, trades.TOPIC, bronze_start(spark, checkpoint, trades.TOPIC, trades.BRONZE)))
         .writeStream.queryName("trades_bronze")
         .option("checkpointLocation", checkpoint)
         .trigger(processingTime=TRIGGER)
         .toTable(trades.BRONZE)
     )
     silver = (
-        kafka(spark)
+        kafka(spark, trades.TOPIC)
         .writeStream.queryName("trades_silver")
         .option("checkpointLocation", f"{CHECKPOINTS}/trades_silver")
         .trigger(processingTime=TRIGGER)
@@ -114,13 +73,7 @@ def main() -> None:
         .start()
     )
     print(f"[trades] streaming {trades.TOPIC} -> {trades.BRONZE}, {trades.SILVER}", flush=True)
-    # Either query failing stops the job, and the platform restarts the service.
-    while bronze.isActive and silver.isActive:
-        time.sleep(10)
-    for q in (bronze, silver):
-        if q.exception():
-            raise q.exception()
-        q.stop()
+    watch(bronze, silver)
 
 
 if __name__ == "__main__":

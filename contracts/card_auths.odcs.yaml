@@ -1,0 +1,65 @@
+# Data contract for card authorisations, bronze to silver (ODCS v3.2.0). Checked in CI by the
+# platform's tenant-contracts workflow: schema, namespaces, and policy tags (ADR 14).
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:lakehouse-markets-data:contract:card_auths
+name: card_auths
+version: 0.1.0
+status: draft
+tenant: markets-data
+domain: markets
+tags: [payments, cards, stream, synthetic]
+description:
+  purpose: Every card authorisation, typed, deduplicated and in euro, for payment and merchant analytics and sanctions screening.
+  usage: Read markets_silver.card_auths; one row per auth_id. Bronze is for replay and audit; rejects say why a record was dropped.
+  limitations: Synthetic (ShadowTraffic). Card tokens stand in for cards, never PANs. Euro amounts use the latest ECB fixing on or before the authorisation's day, at most 7 days old; without one the record is rejected until the FX job catches up and the stream replays. A Kafka outage longer than 7 days loses records.
+schema:
+  - name: card_auths_bronze
+    physicalName: lakehouse.markets_bronze.card_auths
+    physicalType: table
+    logicalType: object
+    description: "Every Kafka record as it arrived, appended; the input to any replay."
+    properties:
+      - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: confidential, description: Card token (the generator's key) }
+      - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: confidential, description: The record value as sent (JSON) }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: internal }
+      - { name: kafka_timestamp, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: card_auths_rejects
+    physicalName: lakehouse.markets_bronze.card_auths_rejects
+    physicalType: table
+    logicalType: object
+    description: Records that failed a rule, with the first rule they failed (markets_data.card_auths.REJECT_RULES); also sent to markets.payments.card-auths.dlq.
+    properties:
+      - { name: reason, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: confidential }
+      - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: confidential }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: internal }
+      - { name: kafka_timestamp, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: rejected_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: card_auths
+    physicalName: lakehouse.markets_silver.card_auths
+    physicalType: table
+    logicalType: object
+    description: One row per authorisation, typed and converted to euro; producer retries are dropped.
+    properties:
+      - { name: auth_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal, description: UUID from the acquirer }
+      - { name: card_token, logicalType: string, physicalType: varchar, required: true, classification: confidential, description: "Token standing in for the card (tok_...), never a PAN" }
+      - { name: merchant_id, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: merchant_name, logicalType: string, physicalType: varchar, required: false, classification: internal, description: Screened against sanctions lists (step 1.7) }
+      - { name: mcc, logicalType: string, physicalType: varchar, required: false, classification: internal, description: ISO 18245 merchant category code }
+      - { name: merchant_country, logicalType: string, physicalType: varchar, required: true, classification: internal, description: ISO 3166 alpha-2 }
+      - { name: channel, logicalType: string, physicalType: varchar, required: true, classification: internal, description: "pos, contactless or ecom" }
+      - { name: response_code, logicalType: string, physicalType: varchar, required: true, classification: internal, description: "ISO 8583 response code; 00 approved" }
+      - { name: approved, logicalType: boolean, physicalType: boolean, required: true, classification: internal }
+      - { name: amount, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal, description: "In the transaction currency, above 0" }
+      - { name: currency, logicalType: string, physicalType: varchar, required: true, classification: internal, description: ISO 4217 }
+      - { name: fx_rate, logicalType: number, physicalType: "decimal(18,6)", required: true, classification: internal, description: "Units of currency per euro (ECB); 1 for euro" }
+      - { name: fx_rate_date, logicalType: date, physicalType: date, required: true, classification: internal, description: The ECB fixing used }
+      - { name: amount_eur, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: internal, description: "amount / fx_rate, rounded to the cent" }
+      - { name: auth_time, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
