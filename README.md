@@ -117,6 +117,17 @@ stream can still be replayed alone, and a query without a checkpoint resumes aft
 its tables already hold. `trades_stream.py` and `card_auths_stream.py` still run alone
 (`make stream`, `make card-stream`). The card stream caches the ECB rates and reloads them hourly.
 
+When the service runs Spark depends on the platform's size, which it passes in `PLATFORM_SCALE`
+(`src/markets_data/scale.py`):
+
+| `PLATFORM_SCALE` | How the streams run | Silver behind the topic |
+|---|---|---|
+| `laptop` (default) | a catch-up every 5 minutes (`availableNow`), then the JVM exits | up to ~5 minutes |
+| `full` | always on, a commit every 30 seconds | ~30 seconds |
+
+Same queries, checkpoints and exactly-once MERGEs either way; `TRIGGER` and `RUN_EVERY`
+override the defaults.
+
 ## Volumes (laptop scale)
 
 The platform runs on one 16 GB laptop, so the defaults prove every path at small volume rather
@@ -126,6 +137,6 @@ than load. Each is one setting on a bigger machine:
 |---|---|---|
 | Coinbase books | BTC-EUR, ETH-EUR (~1 trade/s) | `PRODUCTS` env (e.g. add BTC-USD, ETH-USD, SOL-USD: ~7/s) |
 | Card authorisations | ~1/s, ~1% malformed | `throttleMs` in `generators/card-auths/card-auths.json` |
-| Stream commits | every 2 minutes per query | `TRIGGER` env |
+| Stream runs | a catch-up every 5 minutes | `PLATFORM_SCALE=full`, or `TRIGGER` / `RUN_EVERY` env |
 | Catch-up batch | at most 10,000 records | `MAX_OFFSETS_PER_TRIGGER` env |
 | Driver heap | 512m per stream, 768m for both / batch jobs | `DRIVER_MEMORY` in `submit.py`, or `SPARK_DRIVER_MEMORY` |

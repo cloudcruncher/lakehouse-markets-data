@@ -1,4 +1,4 @@
-"""The Kappa stream for card authorisations (run by spark-submit, as this tenant, for as long as it runs).
+"""The Kappa stream for card authorisations (spark-submit, as this tenant; markets_data.scale says when).
 
 Two queries read markets.payments.card-auths, each with its own checkpoint under CHECKPOINTS
 (the service's /state volume, so a restart resumes where it stopped):
@@ -23,8 +23,9 @@ from pyspark.sql import functions as F
 from pyspark.sql.streaming import StreamingQuery
 
 from markets_data import card_auths, card_stream
+from markets_data.scale import trigger_kwargs
 from markets_data.spark import session
-from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, TRIGGER, kafka, resume_start, watch
+from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, kafka, resume_start, watch
 
 # The ECB fixes once a business day: reading markets_bronze.fx_rates from object storage every
 # batch only loads the store. The rates stay cached in the driver's memory and refresh hourly.
@@ -89,7 +90,7 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         )
         .writeStream.queryName("card_auths_bronze")
         .option("checkpointLocation", bronze_cp)
-        .trigger(processingTime=TRIGGER)
+        .trigger(**trigger_kwargs())
         .toTable(card_auths.BRONZE)
     )
     silver_start = resume_start(spark, silver_cp, card_auths.TOPIC, [card_auths.SILVER, card_auths.REJECTS])
@@ -97,7 +98,7 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         kafka(spark, card_auths.TOPIC, silver_start)
         .writeStream.queryName("card_auths_silver")
         .option("checkpointLocation", silver_cp)
-        .trigger(processingTime=TRIGGER)
+        .trigger(**trigger_kwargs())
         .foreachBatch(merge_silver)
         .start()
     )

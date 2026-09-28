@@ -1,4 +1,4 @@
-"""The Kappa stream for Coinbase trades (run by spark-submit, as this tenant, for as long as it runs).
+"""The Kappa stream for Coinbase trades (spark-submit, as this tenant; markets_data.scale says when).
 
 Two queries read markets.coinbase.trades, each with its own checkpoint under CHECKPOINTS (the
 service's /state volume, so a restart resumes where it stopped):
@@ -22,8 +22,9 @@ from pyspark.sql import functions as F
 from pyspark.sql.streaming import StreamingQuery
 
 from markets_data import stream, trades
+from markets_data.scale import trigger_kwargs
 from markets_data.spark import session
-from markets_data.streaming import CHECKPOINTS, TRIGGER, kafka, resume_start, watch
+from markets_data.streaming import CHECKPOINTS, kafka, resume_start, watch
 
 
 def merge_silver(batch: DataFrame, batch_id: int) -> None:
@@ -61,7 +62,7 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         stream.raw(kafka(spark, trades.TOPIC, resume_start(spark, bronze_cp, trades.TOPIC, [trades.BRONZE])))
         .writeStream.queryName("trades_bronze")
         .option("checkpointLocation", bronze_cp)
-        .trigger(processingTime=TRIGGER)
+        .trigger(**trigger_kwargs())
         .toTable(trades.BRONZE)
     )
     silver = (
@@ -70,7 +71,7 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         )
         .writeStream.queryName("trades_silver")
         .option("checkpointLocation", silver_cp)
-        .trigger(processingTime=TRIGGER)
+        .trigger(**trigger_kwargs())
         .foreachBatch(merge_silver)
         .start()
     )
