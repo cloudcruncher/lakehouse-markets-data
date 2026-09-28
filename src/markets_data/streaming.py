@@ -1,5 +1,6 @@
 """What every Kappa stream in this repo shares: its Kafka source, where bronze resumes, and the
-watch loop that ends the job when a query fails (the platform then restarts the service).
+watch loop that ends the job when its queries finish (a scheduled catch-up, markets_data.scale)
+or one fails (the platform then restarts the service).
 
 Runs inside spark-submit; the transforms each stream applies live next to their table layouts,
 so a plain local Spark session can check them (tests/spark).
@@ -16,10 +17,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
 CHECKPOINTS = os.environ.get("CHECKPOINTS", "/state/checkpoints")
-# Laptop scale (README "Volumes"): a commit every 2 minutes per query keeps the object store
-# quiet, and gold is hourly, so nobody waits on silver. A catch-up batch is capped at 10,000
-# records per partition set, which bounds its memory. Both are env knobs for a bigger machine.
-TRIGGER = os.environ.get("TRIGGER", "2 minutes")
+# A batch is capped at 10,000 records, which bounds its memory; a catch-up reads in several.
 MAX_OFFSETS = int(os.environ.get("MAX_OFFSETS_PER_TRIGGER", "10000"))
 BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
 
@@ -59,10 +57,14 @@ def kafka(spark: SparkSession, topic: str, starting: str = "earliest") -> DataFr
 
 
 def watch(*queries: StreamingQuery) -> None:
-    """Block while every query runs; any one failing stops the job, and the platform restarts it."""
-    while all(q.isActive for q in queries):
-        time.sleep(10)
+    """Block until every query has finished (a catch-up run) or any one fails, which stops the
+    rest and the job; the platform then restarts it."""
+    while any(q.isActive for q in queries):
+        if failed := next((q for q in queries if q.exception()), None):
+            for q in queries:
+                q.stop()
+            raise failed.exception()
+        time.sleep(5)
     for q in queries:
         if q.exception():
             raise q.exception()
-        q.stop()
