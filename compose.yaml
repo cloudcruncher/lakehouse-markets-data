@@ -99,6 +99,47 @@ services:
       - card-auths-state:/state
     mem_limit: 1280m
 
+  # The Kappa replay (make replay / replay-compare): same image and identity as the streams, a
+  # bounded run with its own checkpoint volume, so the live stream is never touched.
+  trades-replay: &replay
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:dev
+    profiles: [replay]
+    entrypoint: ["python3", "-m", "markets_data.submit", "trades_replay.py"]
+    networks: [data, stream]
+    environment:
+      TENANT: markets-data
+      KAFKA_BOOTSTRAP: kafka:9092
+      OPENLINEAGE_URL: http://marquez:5000
+      AWS_REGION: us-east-1
+      POLARIS_ENV_FILE: /run/tenant-secrets/polaris.env
+      RUN_EVERY: "0"   # once, not the laptop catch-up loop
+      MAX_OFFSETS_PER_TRIGGER: "50000"
+      RESET: ${RESET:-0}
+    volumes:
+      - type: volume
+        source: platform-secrets
+        target: /run/tenant-secrets
+        read_only: true
+        volume: { subpath: tenants/markets-data }
+      - replay-state:/state
+    mem_limit: 1280m
+
+  trades-compare:
+    <<: *replay
+    entrypoint: ["python3", "-m", "markets_data.submit", "trades_compare.py"]
+
+  trades-swap:
+    <<: *replay
+    entrypoint: ["python3", "-m", "markets_data.submit", "trades_swap.py"]
+    environment:
+      TENANT: markets-data
+      KAFKA_BOOTSTRAP: kafka:9092
+      AWS_REGION: us-east-1
+      POLARIS_ENV_FILE: /run/tenant-secrets/polaris.env
+      RUN_EVERY: "0"
+      TO: ${TO:-}
+      FORCE: ${FORCE:-0}
+
 networks:
   data: { external: true, name: open-lakehouse_data }
   stream: { external: true, name: open-lakehouse_stream }
@@ -108,3 +149,4 @@ volumes:
   platform-secrets: { external: true, name: open-lakehouse_platform-secrets }
   trades-state:
   card-auths-state:
+  replay-state:

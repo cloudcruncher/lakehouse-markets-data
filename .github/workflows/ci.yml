@@ -63,6 +63,10 @@ jobs:
         run: >
           docker run --rm -v "$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit
           markets-data:ci --master "local[1]" /checks/check_gold.py
+      - name: The replay comparison, on sample tables
+        run: >
+          docker run --rm -v "$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit
+          markets-data:ci --master "local[1]" /checks/check_compare.py
 
   card-auths:
     name: card-auths generator image idles without a licence

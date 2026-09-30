@@ -23,6 +23,9 @@ make run ASSET=markets_bronze/sanctions_targets,markets_silver/sanctions_names  
 make feed             # the Coinbase producer -> markets.coinbase.trades, against the local platform
 make stream           # the trades stream -> markets_bronze.trades, markets_silver.trades (resumes from /state)
 make card-stream      # the card-auths stream -> markets_bronze/silver.card_auths, rejects to the DLQ topic
+make replay           # Kappa replay: rebuild silver from the topic into markets_silver.trades_v2 (RESET=1 starts over)
+make replay-compare   # trades vs trades_v2 over the window both cover; exit 1 if they differ
+make replay-swap      # make the replayed table live by renaming (only if compare passes); TO=v1 rolls back
 make spark-check      # both streams' Spark transforms on sample records, inside the image (~20 s)
 make card-auths-sample  # 5 generated card authorisations, printed (needs the licence, see below)
 make contracts        # the platform's contract check, as CI runs it
@@ -44,6 +47,41 @@ as it arrived; silver keeps each valid trade once (MERGE by product and trade id
 resends the latest trade after a reconnect); records that fail a rule (`trades.REJECT_RULES`)
 land in `markets_bronze.trades_rejects` with the reason. A lost checkpoint doesn't duplicate
 bronze: the stream resumes after the offsets the table already holds.
+
+## Replaying the topic (Kappa)
+
+Kafka is the source of truth, so a change to silver's logic is a new table built from the topic,
+not an ALTER and a backfill. `jobs/trades_replay.py` (`make replay`) reads `markets.coinbase.trades`
+from its first retained record into `markets_silver.trades_v2`, through the same MERGE the live
+stream uses, with a new column (`notional`, price * size). It is a bounded run with its own
+checkpoint: run it again and it catches up from where it stopped. The live stream keeps writing
+`markets_silver.trades` the whole time, so nothing a consumer reads changes.
+
+`jobs/trades_compare.py` (`make replay-compare`) is the gate before any switch. Per partition it
+compares the two tables from the replay's first offset to the lower of their last offsets (they are
+never caught up to the same record), and must find the same trades with the same values; it exits 1
+on any difference. First run on 30 Sep 2026: 164,964 trades in both, 0 only in one, 0 changed.
+
+`jobs/trades_swap.py` (`make replay-swap`) makes the replay live by renaming, not by a view: `trades`
+becomes `trades_v1` and `trades_v2` becomes `trades`, so readers in every engine and the stream
+keep using `markets_silver.trades`, and no data moves. It refuses unless the comparison passes
+(`FORCE=1` overrides) and never overwrites the table kept for rollback. `TO=v1` undoes it with the
+same two renames. A Spark-created view would not do: Trino refuses Spark's view dialect, and
+colleagues read through Trino.
+
+The stream writes whichever layout the table under `trades` has (it adds `notional` only if the
+table has it), so a release can ship before the swap, and the Polaris catalog cache is off so the
+next batch sees a rename. To cut over: release, `make replay`, stop the stream, `make replay`
+again, `make replay-swap`, start the stream. A batch landing between the two renames fails and the
+service restarts from its checkpoint, losing nothing. Rollback is for a swap found bad quickly:
+trades written since go to the kept table, and the stream's checkpoint is already past them, so
+reset the silver checkpoint (or replay into the old table) to bring it current.
+
+Tried on 30 Sep 2026 against the live stack: replay 165,217 trades, compare identical, swap, the
+stream (this code) wrote on into the swapped table with `notional` on every row and no duplicates,
+rollback, and the platform's stream refilled the old table.
+
+The topic keeps 7 days (`retentionHours: 168`), which bounds how far back a replay reaches.
 
 ## What the platform gives this repo
 

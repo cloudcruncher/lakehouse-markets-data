@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from pyspark.sql import SparkSession
 
-from markets_data import stream
+from markets_data import stream, trades
 
 T = datetime(2026, 9, 27, 19, 44, 39)
 GOOD = {
@@ -65,7 +65,11 @@ def main():
         7: "side is not buy or sell",
         8: "time is not a timestamp",
     }, bad
-    print("OK   trades stream: 2 trades (1 duplicate dropped), 6 rejects with the right reason")
+    v2 = {r.trade_id: r for r in stream.with_notional(stream.valid(parsed)).collect()}
+    # 84751.67 * 0.00003146 has 10 fractional digits: v2 must keep them, not round at a narrower scale.
+    assert v2[1099205733].notional == Decimal("2.666287538200"), v2[1099205733].notional
+    assert list(stream.with_notional(stream.valid(parsed)).columns) == trades.V2_COLUMNS
+    print("OK   trades stream: 2 trades (1 duplicate dropped), 6 rejects, v2 notional exact")
 
 
 if __name__ == "__main__":

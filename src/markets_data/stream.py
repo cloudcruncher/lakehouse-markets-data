@@ -54,6 +54,11 @@ def valid(parsed: DataFrame) -> DataFrame:
     )
 
 
+def with_notional(good: DataFrame) -> DataFrame:
+    """Silver v2: the valid trades plus price * size."""
+    return good.withColumn("notional", F.expr(trades.NOTIONAL_SQL)).select(*trades.V2_COLUMNS)
+
+
 def rejected(parsed: DataFrame) -> DataFrame:
     return parsed.filter("reject_reason IS NOT NULL").select(
         F.col("reject_reason").alias("reason"),
