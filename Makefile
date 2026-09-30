@@ -32,8 +32,17 @@ card-auths: ## Run the card-authorisation generator against the local platform's
 card-auths-sample: ## Print 5 generated card authorisations instead of sending them (needs the licence)
 	docker compose build -q card-auths && SHADOWTRAFFIC_ARGS="--stdout --sample 5" docker compose run --rm card-auths
 
+replay: build ## Kappa replay: rebuild silver from the topic into markets_silver.trades_v2 (RESET=1 starts over)
+	docker compose run --rm trades-replay
+
+replay-compare: build ## Compare markets_silver.trades with trades_v2 (exit 1 if they differ)
+	docker compose run --rm trades-compare
+
+replay-swap: build ## Make the replayed table live (renames, only if compare passes); TO=v1 rolls back
+	TO=$(or $(TO),v2) docker compose run --rm trades-swap
+
 spark-check: build ## The streams' and gold's Spark transforms on sample records, inside the image (no platform needed)
-	for check in check_stream.py check_card_auths.py check_gold.py; do \
+	for check in check_stream.py check_card_auths.py check_gold.py check_compare.py; do \
 	  docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
 	    ghcr.io/cloudcruncher/lakehouse-markets-data:dev --master "local[1]" /checks/$$check || exit 1; \
 	done
@@ -41,4 +50,4 @@ spark-check: build ## The streams' and gold's Spark transforms on sample records
 contracts: ## The platform's contract check, as CI runs it (needs ../open-lakehouse)
 	uv run --quiet ../open-lakehouse/contracts/check.py --tenant markets-data --dir contracts
 
-.PHONY: help lint test build run feed card-stream card-auths card-auths-sample stream spark-check contracts
+.PHONY: help lint test build run feed card-stream card-auths card-auths-sample stream replay replay-compare replay-swap spark-check contracts

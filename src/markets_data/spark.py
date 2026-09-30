@@ -67,6 +67,9 @@ def session(app: str) -> SparkSession:
         .config(f"{c}.oauth2-server-uri", f"{POLARIS}/v1/oauth/tokens")
         .config(f"{c}.token-refresh-enabled", "true")
         .config(f"{c}.header.X-Iceberg-Access-Delegation", "vended-credentials")
+        # A table renamed by a replay swap (trades_swap) must be seen by the next batch, not after
+        # the catalog's cache expires.
+        .config(f"{c}.cache-enabled", "false")
         .config(f"{c}.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
         .config(f"{c}.s3.path-style-access", "true")
         .config("spark.sql.defaultCatalog", CATALOG)

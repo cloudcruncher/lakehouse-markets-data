@@ -27,21 +27,31 @@ from markets_data.spark import session
 from markets_data.streaming import CHECKPOINTS, kafka, resume_start, watch
 
 
+def merge_trades(good: DataFrame, table: str) -> None:
+    """MERGE valid trades into a silver table once each (a retried batch writes nothing twice)."""
+    oldest = good.agg(F.min("trade_time")).first()[0]
+    if oldest is None:
+        return
+    good.createOrReplaceTempView("trades_batch")
+    # Only the days this batch touches (the table is partitioned by day of trade_time).
+    good.sparkSession.sql(f"""
+        MERGE INTO {table} t USING trades_batch s
+        ON t.product_id = s.product_id AND t.trade_id = s.trade_id
+           AND t.trade_time >= TIMESTAMP '{oldest:%Y-%m-%d}'
+        WHEN NOT MATCHED THEN INSERT *
+    """)
+
+
 def merge_silver(batch: DataFrame, batch_id: int) -> None:
     spark = batch.sparkSession
     parsed = stream.parse(stream.raw(batch)).persist()
     good, bad = stream.valid(parsed), stream.rejected(parsed)
-    good.createOrReplaceTempView("trades_batch")
     bad.createOrReplaceTempView("rejects_batch")
-    oldest = good.agg(F.min("trade_time")).first()[0]
-    if oldest is not None:
-        # Only the days this batch touches (the table is partitioned by day of trade_time).
-        spark.sql(f"""
-            MERGE INTO {trades.SILVER} t USING trades_batch s
-            ON t.product_id = s.product_id AND t.trade_id = s.trade_id
-               AND t.trade_time >= TIMESTAMP '{oldest:%Y-%m-%d}'
-            WHEN NOT MATCHED THEN INSERT *
-        """)
+    # Silver is whichever table holds the name: the original layout, or v2's after a replay swap
+    # (markets_data.jobs.trades_swap). Writing what the table has lets a release ship before the swap.
+    if "notional" in spark.table(trades.SILVER).columns:
+        good = stream.with_notional(good)
+    merge_trades(good, trades.SILVER)
     n_bad = bad.count()
     if n_bad:
         spark.sql(f"""

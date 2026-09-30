@@ -9,6 +9,11 @@ TOPIC = "markets.coinbase.trades"
 BRONZE = "markets_bronze.trades"
 REJECTS = "markets_bronze.trades_rejects"
 SILVER = "markets_silver.trades"
+# A replay (markets_data.jobs.trades_replay) rebuilds silver from the topic into V2 with new logic;
+# markets_data.jobs.trades_swap then exchanges the two names (SILVER <-> V1, V2 -> SILVER), so every
+# reader and the stream keep using one name, in any engine. V1 is the old table after a swap.
+V2 = "markets_silver.trades_v2"
+V1 = "markets_silver.trades_v1"
 
 # The producer keeps price and size as strings; they become decimals here, once. 18 integer and
 # 12 fractional digits hold any Coinbase price (up to ~1e6) and size (down to 1e-8).
@@ -63,3 +68,16 @@ SILVER_COLUMNS = [
     "trade_id", "product_id", "base_currency", "quote_currency", "price", "size", "side",
     "trade_time", "sequence", "kafka_partition", "kafka_offset", "ingested_at",
 ]  # fmt: skip
+
+# v2 adds the traded value in the quote currency. Operands are narrowed first: a product of two
+# decimal(30,12) would overflow Spark's 38 digits and lose fractional digits.
+NOTIONAL_SQL = f"CAST(CAST(price AS decimal(20,12)) * CAST(size AS decimal(20,12)) AS {DECIMAL})"
+V2_COLUMNS = [*SILVER_COLUMNS, "notional"]
+V2_DDL = f"""
+CREATE TABLE IF NOT EXISTS {V2} (
+    trade_id bigint, product_id string, base_currency string, quote_currency string,
+    price {DECIMAL}, size {DECIMAL}, side string, trade_time timestamp, sequence bigint,
+    kafka_partition int, kafka_offset bigint, ingested_at timestamp, notional {DECIMAL}
+) USING iceberg PARTITIONED BY (days(trade_time))
+TBLPROPERTIES ('format-version'='2', 'write.parquet.compression-codec'='zstd')
+"""
