@@ -1,14 +1,24 @@
 """The code location loads, and says what the platform will run."""
 
+from pathlib import Path
+
 import dagster as dg
 
 from markets_data.definitions import defs
 from markets_data.submit import spark_submit
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_code_location_loads():
     graph = defs.resolve_asset_graph()
-    assert graph.get_all_asset_keys() == {
+    # Silver trades and card auths are written by the streams, not Dagster: they appear as the
+    # external assets gold depends on, so the asset graph shows what gold is built from.
+    assert graph.external_asset_keys == {
+        dg.AssetKey(["markets_silver", "trades"]),
+        dg.AssetKey(["markets_silver", "card_auths"]),
+    }
+    assert graph.materializable_asset_keys == {
         dg.AssetKey(["markets_bronze", "fx_rates"]),
         dg.AssetKey(["markets_bronze", "sanctions_targets"]),
         dg.AssetKey(["markets_silver", "sanctions_names"]),
@@ -43,3 +53,17 @@ def test_driver_heap_per_job():
     assert heap("trades_stream.py") == heap("card_auths_stream.py") == "512m"
     assert heap("fx_rates.py") == heap("sanctions.py") == heap("gold.py") == "768m"
     assert heap("streams.py") == "768m"  # both streams in one application
+
+
+def test_gold_contract_upstream_matches_the_asset_graph():
+    """The catalog shows the contract's `upstream`, Dagster shows the asset deps: they must agree."""
+    import yaml
+
+    from markets_data.definitions import GOLD_UPSTREAM
+
+    contract = yaml.safe_load((ROOT / "contracts" / "gold.odcs.yaml").read_text())
+    declared = {}
+    for obj in contract["schema"]:
+        up = next(c["value"] for c in obj["customProperties"] if c["property"] == "upstream")
+        declared[obj["name"]] = {u.strip() for u in up.split(",")}
+    assert declared == {t: {".".join(k) for k in keys} for t, keys in GOLD_UPSTREAM.items()}

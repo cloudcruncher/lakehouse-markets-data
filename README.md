@@ -48,6 +48,26 @@ resends the latest trade after a reconnect); records that fail a rule (`trades.R
 land in `markets_bronze.trades_rejects` with the reason. A lost checkpoint doesn't duplicate
 bronze: the stream resumes after the offsets the table already holds.
 
+## Gold as data products
+
+Gold tables are products, not just tables: a consumer should know what they are, who owns them, how they
+are built and whether to rely on them before writing a query. The contracts in `contracts/` carry that
+(ODCS v3.2 standard fields), and the platform's catalog (`make urls`: Data products) renders one page per
+table from them, joined with live freshness and the latest check results:
+
+| A consumer asks | The contract says (field) |
+|---|---|
+| What is it for, and what are its limits? | `description.purpose`, `usage`, `limitations` |
+| What does one row mean? | `dataGranularityDescription` |
+| How fresh is it promised to be? | `slaProperties` (`freshness`, per table) |
+| What is it built from, and by what code? | `customProperties` `upstream`; `authoritativeDefinitions` `transformationImplementation` |
+| Which checks guard it? | `quality` (the names match the Dagster asset checks) |
+| What does each column mean, and is it sensitive? | `properties[].description`, `classification`, `tags` |
+
+The contracts ship in the image at `/contracts`, so the catalog shows what this release was built and
+checked with. `GOLD_UPSTREAM` in `definitions.py` gives Dagster the same upstream tables, and a test keeps
+the two in step.
+
 ## Replaying the topic (Kappa)
 
 Kafka is the source of truth, so a change to silver's logic is a new table built from the topic,

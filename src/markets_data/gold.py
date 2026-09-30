@@ -6,6 +6,8 @@ in seconds; tests/spark runs the SQL on sample rows. markets_gold is readable by
 (the platform's entitlements), so nothing here carries a card token or a person.
 """
 
+import os
+
 from markets_data import card_auths, sanctions, trades
 
 OHLCV = "markets_gold.crypto_ohlcv_1m"
@@ -14,7 +16,8 @@ HITS = "markets_gold.sanctions_hits"
 
 # Each hourly build recomputes the days it may have missed or that may still change: yesterday
 # (late records, a stream catching up) and today. Older days are final.
-REBUILD_DAYS = 2
+# GOLD_REBUILD_DAYS widens one run to backfill after a logic fix; the window is replaced, so it is repeatable.
+REBUILD_DAYS = int(os.environ.get("GOLD_REBUILD_DAYS", "2"))
 
 OHLCV_DDL = f"""
 CREATE TABLE IF NOT EXISTS {OHLCV} (
@@ -28,14 +31,24 @@ TBLPROPERTIES ('format-version'='2', 'write.parquet.compression-codec'='zstd')
 
 # Open and close are the first and last trade of the minute by (trade_time, trade_id): Coinbase
 # can stamp several trades with the same microsecond.
+#
+# price * size of two decimal(30,12) would overflow Spark's 38 digits, and Spark answers by dropping
+# fractional digits: a minute that traded at one price got a VWAP a hair outside [low, high] and failed
+# candles_are_consistent. Narrowing the operands first keeps every digit (trades.NOTIONAL_SQL, for
+# silver). A VWAP is a weighted average of prices, so it is held inside [low, high] by definition; the
+# division is done in double, whose 15 digits are plenty for a price, then cast back.
+VALUE = "CAST(price AS decimal(20,12)) * CAST(size AS decimal(20,12))"
+AVERAGE = f"CAST(sum({VALUE}) AS double) / CAST(sum(size) AS double)"
+LOW, HIGH = "CAST(min(price) AS double)", "CAST(max(price) AS double)"
+VWAP = f"CAST(least(greatest({AVERAGE}, {LOW}), {HIGH}) AS {trades.DECIMAL})"
 OHLCV_SQL = f"""
 SELECT product_id, first(base_currency) AS base_currency, first(quote_currency) AS quote_currency,
        date_trunc('MINUTE', trade_time) AS minute,
        min_by(price, struct(trade_time, trade_id)) AS open, max(price) AS high, min(price) AS low,
        max_by(price, struct(trade_time, trade_id)) AS close,
        sum(size) AS volume,
-       CAST(sum(price * size) AS {trades.DECIMAL}) AS notional,
-       CAST(sum(price * size) / sum(size) AS {trades.DECIMAL}) AS vwap,
+       CAST(sum({VALUE}) AS {trades.DECIMAL}) AS notional,
+       {VWAP} AS vwap,
        count(*) AS trades, current_timestamp() AS built_at
 FROM {{source}}
 WHERE trade_time >= {{since}}

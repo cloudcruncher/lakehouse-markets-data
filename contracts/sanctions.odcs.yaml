@@ -4,8 +4,8 @@ apiVersion: v3.2.0
 kind: DataContract
 id: urn:lakehouse-markets-data:contract:sanctions
 name: sanctions
-version: 0.1.0
-status: draft
+version: 0.2.0
+status: active
 tenant: markets-data
 domain: markets
 tags: [reference-data, sanctions, compliance, public-data]
@@ -13,12 +13,20 @@ description:
   purpose: The UK Sanctions List (FCDO) for screening card-authorisation merchants.
   usage: Screen on markets_silver.sanctions_names (normalised with markets_data.sanctions.normalise); bronze keeps every target ever listed, for audit.
   limitations: "Source: OpenSanctions (CC BY-NC 4.0), refreshed daily at 06:15 London; a designation made today may appear tomorrow. Birth dates, addresses, phones and emails are never landed (data minimisation). Screening is exact on normalised names: transliterations and misspellings need a fuzzy matcher (not yet)."
+slaProperties:
+  - { property: freshness, value: 30, unit: h, element: sanctions_targets, description: "Daily load at 06:15 London; 30 hours tolerates one late run" }
+  - { property: freshness, value: 30, unit: h, element: sanctions_names, description: "Rebuilt by the same daily run" }
+authoritativeDefinitions:
+  - { type: transformationImplementation, url: "https://github.com/cloudcruncher/lakehouse-markets-data/blob/main/src/markets_data/sanctions.py", description: "List load, normalisation and screening names (markets_data/sanctions.py)" }
 schema:
   - name: sanctions_targets
     physicalName: lakehouse.markets_bronze.sanctions_targets
     physicalType: table
     logicalType: object
     description: "One row per target ever listed, MERGEd by target_id; delisted_at once it leaves the list."
+    dataGranularityDescription: one row per sanctions target ever listed
+    customProperties:
+      - { property: upstream, value: "opensanctions.org (UK FCDO Sanctions List)" }
     properties:
       - { name: target_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public, description: OpenSanctions entity id }
       - { name: schema, logicalType: string, physicalType: varchar, required: true, classification: public, description: "Person, Organization, Company, Vessel, ..." }
@@ -38,6 +46,9 @@ schema:
     physicalType: table
     logicalType: object
     description: "Today's list: one row per normalised name or alias of each listed organisation (people and vessels excluded: merchants are businesses)."
+    dataGranularityDescription: one row per normalised name or alias of a listed organisation
+    customProperties:
+      - { property: upstream, value: "markets_bronze.sanctions_targets" }
     properties:
       - { name: target_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public }
       - { name: schema, logicalType: string, physicalType: varchar, required: true, classification: public }

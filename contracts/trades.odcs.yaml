@@ -4,8 +4,8 @@ apiVersion: v3.2.0
 kind: DataContract
 id: urn:lakehouse-markets-data:contract:trades
 name: trades
-version: 0.2.0
-status: draft
+version: 0.3.0
+status: active
 tenant: markets-data
 domain: markets
 tags: [market-data, crypto, stream, public-data]
@@ -13,12 +13,21 @@ description:
   purpose: Every Coinbase trade on the tracked products, typed and deduplicated, for OHLCV and market analytics.
   usage: Read markets_silver.trades; one row per (product_id, trade_id). Bronze is for replay and audit.
   limitations: Public market data, no PII. Trades during a producer outage are missing (gaps in trade_id); a Kafka outage longer than 7 days loses records.
+slaProperties:
+  # Streams catch up every 5 minutes at laptop scale and continuously at full scale.
+  - { property: freshness, value: 15, unit: m, element: trades_bronze, description: "Kappa stream, a catch-up every 5 minutes on a laptop" }
+  - { property: freshness, value: 15, unit: m, element: trades, description: "Kappa stream, a catch-up every 5 minutes on a laptop" }
+authoritativeDefinitions:
+  - { type: transformationImplementation, url: "https://github.com/cloudcruncher/lakehouse-markets-data/blob/main/src/markets_data/stream.py", description: "Parsing, rules and de-duplication (markets_data/stream.py, trades.py)" }
 schema:
   - name: trades_bronze
     physicalName: lakehouse.markets_bronze.trades
     physicalType: table
     logicalType: object
     description: Every Kafka record as it arrived, appended; the input to any replay.
+    dataGranularityDescription: one row per Kafka record (partition and offset)
+    customProperties:
+      - { property: upstream, value: "kafka:markets.coinbase.trades" }
     properties:
       - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: public, description: Product id (the producer's key) }
       - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: public, description: The record value as sent (JSON) }
@@ -44,6 +53,11 @@ schema:
     physicalType: table
     logicalType: object
     description: One row per trade, typed; Coinbase's resends after a reconnect are dropped.
+    dataGranularityDescription: one row per Coinbase trade (product and trade id)
+    customProperties:
+      - { property: upstream, value: "kafka:markets.coinbase.trades" }
+    quality:
+      - { name: rejects_carry_a_reason, type: text, dimension: conformity, severity: warning, description: "records that fail a rule (price, size, side, time, key) go to trades_rejects with the first rule they failed, never into silver" }
     properties:
       - { name: trade_id, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: "Coinbase trade id, increasing per product" }
       - { name: product_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public, description: e.g. BTC-USD }
@@ -57,22 +71,5 @@ schema:
       - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, classification: internal }
       - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, classification: internal }
       - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
-  - name: trades_v2
-    physicalName: lakehouse.markets_silver.trades_v2
-    physicalType: table
-    logicalType: object
-    description: Silver rebuilt by replaying the topic (markets_data.jobs.trades_replay), with notional added; the target of the trades_current view once compared and switched.
-    properties:
-      - { name: trade_id, logicalType: integer, physicalType: bigint, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: "Coinbase trade id, increasing per product" }
-      - { name: product_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public, description: e.g. BTC-USD }
-      - { name: base_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
-      - { name: quote_currency, logicalType: string, physicalType: varchar, required: true, classification: public }
-      - { name: price, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "Quote currency per unit of base, above 0" }
-      - { name: size, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "Units of base, above 0" }
-      - { name: side, logicalType: string, physicalType: varchar, required: true, classification: public, description: "The taker's side, buy or sell" }
-      - { name: trade_time, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: public }
-      - { name: sequence, logicalType: integer, physicalType: bigint, required: false, classification: public }
-      - { name: kafka_partition, logicalType: integer, physicalType: integer, required: true, classification: internal }
-      - { name: kafka_offset, logicalType: integer, physicalType: bigint, required: true, classification: internal }
-      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
-      - { name: notional, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "price * size: the traded value in the quote currency" }
+      - { name: notional, logicalType: number, physicalType: "decimal(30,12)", required: true, classification: public, description: "price * size: the traded value in the quote currency (from 0.9.0; older rows were backfilled by the replay)" }
+
