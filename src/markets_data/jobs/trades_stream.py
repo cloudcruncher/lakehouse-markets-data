@@ -3,7 +3,7 @@
 Two queries read markets.coinbase.trades, each with its own checkpoint under CHECKPOINTS (the
 service's /state volume, so a restart resumes where it stopped):
 
-  * bronze: every record as it arrived, appended (Iceberg commits are exactly once per batch)
+  * bronze: every record as it arrived, MERGEd on (partition, offset) so a stale checkpoint adds nothing twice
   * silver: typed and checked; valid trades MERGEd once by (product_id, trade_id), the rest
     MERGEd into markets_bronze.trades_rejects with a reason. MERGE keeps a retried batch from
     writing anything twice.
@@ -24,7 +24,7 @@ from pyspark.sql.streaming import StreamingQuery
 from markets_data import stream, trades
 from markets_data.scale import trigger_kwargs
 from markets_data.spark import session
-from markets_data.streaming import CHECKPOINTS, kafka, resume_start, watch
+from markets_data.streaming import CHECKPOINTS, kafka, merge_bronze, resume_start, watch
 
 
 def merge_trades(good: DataFrame, table: str) -> None:
@@ -69,11 +69,12 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         spark.sql(ddl)
     bronze_cp, silver_cp = f"{CHECKPOINTS}/trades_bronze", f"{CHECKPOINTS}/trades_silver"
     bronze = (
-        stream.raw(kafka(spark, trades.TOPIC, resume_start(spark, bronze_cp, trades.TOPIC, [trades.BRONZE])))
+        kafka(spark, trades.TOPIC, resume_start(spark, bronze_cp, trades.TOPIC, [trades.BRONZE]))
         .writeStream.queryName("trades_bronze")
         .option("checkpointLocation", bronze_cp)
         .trigger(**trigger_kwargs())
-        .toTable(trades.BRONZE)
+        .foreachBatch(merge_bronze(trades.BRONZE, stream.raw))
+        .start()
     )
     silver = (
         kafka(

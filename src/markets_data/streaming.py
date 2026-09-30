@@ -11,10 +11,14 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 
 from confluent_kafka.admin import AdminClient
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.streaming import StreamingQuery
+
+from markets_data import bronze
 
 CHECKPOINTS = os.environ.get("CHECKPOINTS", "/state/checkpoints")
 # A batch is capped at 10,000 records, which bounds its memory; a catch-up reads in several.
@@ -41,6 +45,20 @@ def resume_start(spark: SparkSession, checkpoint: str, topic: str, tables: list[
     offsets = {str(p): held.get(p, -2) for p in partitions.topics[topic].partitions}
     print(f"[{tables[0]}] no checkpoint: resuming after the tables' offsets {offsets}", flush=True)
     return json.dumps({topic: offsets})
+
+
+def merge_bronze(table: str, raw: Callable[[DataFrame], DataFrame]) -> Callable[[DataFrame, int], None]:
+    """A foreachBatch function writing each Kafka record to `table` once (markets_data.bronze)."""
+
+    def write(batch: DataFrame, batch_id: int) -> None:
+        rows = raw(batch)
+        oldest, min_offset = rows.agg(F.min("kafka_timestamp"), F.min("kafka_offset")).first()
+        if oldest is None:
+            return
+        rows.createOrReplaceTempView("bronze_batch")
+        rows.sparkSession.sql(bronze.merge_sql(table, oldest, min_offset))
+
+    return write
 
 
 def kafka(spark: SparkSession, topic: str, starting: str = "earliest") -> DataFrame:
