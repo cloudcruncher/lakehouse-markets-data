@@ -85,9 +85,30 @@ GOLD_SPECS = [
 ]
 
 
+# What each gold table is built from: the asset graph shows it, and the data contract's `upstream`
+# says the same (tests/test_definitions.py keeps the two in step). Silver is written by the streams,
+# not by Dagster, so those keys appear as external assets.
+GOLD_UPSTREAM = {
+    "crypto_ohlcv_1m": [["markets_silver", "trades"]],
+    "card_auth_daily": [["markets_silver", "card_auths"]],
+    "sanctions_hits": [
+        ["markets_silver", "card_auths"],
+        ["markets_silver", "sanctions_names"],
+        ["markets_bronze", "sanctions_targets"],
+    ],
+}
+
+
 @dg.multi_asset(
     specs=[
-        dg.AssetSpec(key, group_name="gold", owners=OWNERS, kinds={"spark", "iceberg"}, description=desc)
+        dg.AssetSpec(
+            key,
+            group_name="gold",
+            owners=OWNERS,
+            kinds={"spark", "iceberg"},
+            description=desc,
+            deps=GOLD_UPSTREAM[key[1]],
+        )
         for key, desc, _ in GOLD_SPECS
     ],
     check_specs=[dg.AssetCheckSpec(c, asset=key) for key, _, checks in GOLD_SPECS for c in checks],

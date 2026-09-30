@@ -25,10 +25,21 @@ def main():
             (3, "BTC-USD", D("110"), D("1"), t.replace(second=40)),
             (4, "BTC-USD", D("120"), D("2"), t.replace(minute=16)),
             (5, "BTC-USD", D("1"), D("1"), datetime(2026, 9, 20)),  # before the rebuild window
+            # A minute that traded at one price, in real-world sizes: VWAP must be that price, exactly.
+            (6, "BTC-EUR", D("73818.56"), D("0.00123456"), t.replace(hour=11, minute=0, second=1)),
+            (7, "BTC-EUR", D("73818.56"), D("0.00087654"), t.replace(hour=11, minute=0, second=2)),
+            (8, "BTC-EUR", D("73818.56"), D("0.00011111"), t.replace(hour=11, minute=0, second=3)),
         ],
         "trade_id bigint, product_id string, price decimal(30,12), size decimal(30,12), trade_time timestamp",
     ).selectExpr("*", "'BTC' AS base_currency", "'USD' AS quote_currency").createOrReplaceTempView("trades")
-    candles = {r.minute: r for r in spark.sql(gold.OHLCV_SQL.format(source="trades", since=SINCE)).collect()}
+    by_minute = {}
+    for r in spark.sql(gold.OHLCV_SQL.format(source="trades", since=SINCE)).collect():
+        by_minute[(r.product_id, r.minute)] = r
+    flat = by_minute.pop(("BTC-EUR", t.replace(hour=11, minute=0)))
+    assert (flat.open, flat.high, flat.low, flat.close) == (D("73818.56"),) * 4, flat
+    assert flat.vwap == D("73818.56"), flat  # not 73818.559805...: the product must not lose digits
+    assert flat.notional == D("73818.56") * D("0.00222221"), flat
+    candles = {minute: r for (_, minute), r in by_minute.items()}
     assert set(candles) == {t, t.replace(minute=16)}, candles
     c = candles[t]
     assert (c.open, c.high, c.low, c.close) == (D("90"), D("110"), D("90"), D("110")), c  # open: trade 1

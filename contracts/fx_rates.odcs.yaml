@@ -4,8 +4,8 @@ apiVersion: v3.2.0
 kind: DataContract
 id: urn:lakehouse-markets-data:contract:fx-rates
 name: fx_rates
-version: 0.1.0
-status: draft
+version: 0.2.0
+status: active
 tenant: markets-data
 domain: markets
 tags: [reference, fx, public-data]
@@ -13,12 +13,20 @@ description:
   purpose: Euro reference rates per business day, to convert card authorisations and trades to one currency.
   usage: Join on rate_date (the latest fixing on or before the event date) and quote currency.
   limitations: One fixing per business day around 16:00 CET; no weekend or holiday rates. Public data, no PII.
+slaProperties:
+  # One ECB fixing a business day around 16:00 CET; weekends and holidays have none, so the promise spans a long weekend.
+  - { property: freshness, value: 4, unit: d, element: fx_rates, description: "Weekday job at 16:30 Berlin; four days covers a bank-holiday weekend" }
+authoritativeDefinitions:
+  - { type: transformationImplementation, url: "https://github.com/cloudcruncher/lakehouse-markets-data/blob/main/src/markets_data/jobs/fx_rates.py", description: "Frankfurter (ECB) load and MERGE (jobs/fx_rates.py)" }
 schema:
   - name: fx_rates
     physicalName: lakehouse.markets_bronze.fx_rates
     physicalType: table
     logicalType: object
     description: One row per (rate_date, base, quote); corrections are merged in place.
+    dataGranularityDescription: one row per business day and quote currency
+    customProperties:
+      - { property: upstream, value: "frankfurter.app (ECB reference rates)" }
     properties:
       - { name: rate_date, logicalType: date, physicalType: date, required: true, primaryKey: true, primaryKeyPosition: 1, classification: public }
       - { name: base, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 2, classification: public, description: Always EUR }

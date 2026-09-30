@@ -13,6 +13,9 @@ RUN cd /opt/markets-data \
  && uv pip install --system --break-system-packages --no-cache --require-hashes -r /tmp/requirements.txt \
  && rm /tmp/requirements.txt
 COPY src /opt/markets-data/src
+# The data contracts travel with the code: the platform's catalog reads them from /contracts in the
+# image it runs (tenants/README.md), so what it shows is what this release was built and checked with.
+COPY contracts /contracts
 RUN uv pip install --system --break-system-packages --no-deps --no-cache /opt/markets-data
 # Local runs only: the platform mounts its own dagster.yaml over this one when it deploys us.
 RUN printf 'telemetry:\n  enabled: false\n' > /opt/dagster/home/dagster.yaml && chown spark /opt/dagster/home/dagster.yaml

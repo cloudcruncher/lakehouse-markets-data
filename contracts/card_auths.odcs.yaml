@@ -4,8 +4,8 @@ apiVersion: v3.2.0
 kind: DataContract
 id: urn:lakehouse-markets-data:contract:card_auths
 name: card_auths
-version: 0.1.0
-status: draft
+version: 0.2.0
+status: active
 tenant: markets-data
 domain: markets
 tags: [payments, cards, stream, synthetic]
@@ -13,12 +13,20 @@ description:
   purpose: Every card authorisation, typed, deduplicated and in euro, for payment and merchant analytics and sanctions screening.
   usage: Read markets_silver.card_auths; one row per auth_id. Bronze is for replay and audit; rejects say why a record was dropped.
   limitations: Synthetic (ShadowTraffic). Card tokens stand in for cards, never PANs. Euro amounts use the latest ECB fixing on or before the authorisation's day, at most 7 days old; without one the record is rejected until the FX job catches up and the stream replays. A Kafka outage longer than 7 days loses records.
+slaProperties:
+  - { property: freshness, value: 15, unit: m, element: card_auths_bronze, description: "Kappa stream, a catch-up every 5 minutes on a laptop" }
+  - { property: freshness, value: 15, unit: m, element: card_auths, description: "Kappa stream, a catch-up every 5 minutes on a laptop" }
+authoritativeDefinitions:
+  - { type: transformationImplementation, url: "https://github.com/cloudcruncher/lakehouse-markets-data/blob/main/src/markets_data/card_stream.py", description: "Parsing, rules, euro conversion and de-duplication (markets_data/card_stream.py, card_auths.py)" }
 schema:
   - name: card_auths_bronze
     physicalName: lakehouse.markets_bronze.card_auths
     physicalType: table
     logicalType: object
     description: "Every Kafka record as it arrived, appended; the input to any replay."
+    dataGranularityDescription: one row per Kafka record (partition and offset)
+    customProperties:
+      - { property: upstream, value: "kafka:markets.payments.card-auths" }
     properties:
       - { name: kafka_key, logicalType: string, physicalType: varchar, required: false, classification: confidential, description: Card token (the generator's key) }
       - { name: payload, logicalType: string, physicalType: varchar, required: false, classification: confidential, description: The record value as sent (JSON) }
@@ -44,6 +52,11 @@ schema:
     physicalType: table
     logicalType: object
     description: One row per authorisation, typed and converted to euro; producer retries are dropped.
+    dataGranularityDescription: one row per card authorisation (auth id)
+    customProperties:
+      - { property: upstream, value: "kafka:markets.payments.card-auths, markets_bronze.fx_rates" }
+    quality:
+      - { name: rejects_carry_a_reason, type: text, dimension: conformity, severity: warning, description: "records that fail a rule, or have no ECB rate in the week before, go to card_auths_rejects and the DLQ topic with the reason, never into silver" }
     properties:
       - { name: auth_id, logicalType: string, physicalType: varchar, required: true, primaryKey: true, primaryKeyPosition: 1, classification: internal, description: UUID from the acquirer }
       - { name: card_token, logicalType: string, physicalType: varchar, required: true, classification: confidential, description: "Token standing in for the card (tok_...), never a PAN" }
