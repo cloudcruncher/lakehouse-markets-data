@@ -128,6 +128,11 @@ services:
     <<: *replay
     entrypoint: ["python3", "-m", "markets_data.submit", "trades_compare.py"]
 
+  # Repairs duplicate records in bronze (jobs/bronze_dedupe.py); run it with the streams idle.
+  bronze-dedupe:
+    <<: *replay
+    entrypoint: ["python3", "-m", "markets_data.submit", "bronze_dedupe.py"]
+
   trades-swap:
     <<: *replay
     entrypoint: ["python3", "-m", "markets_data.submit", "trades_swap.py"]

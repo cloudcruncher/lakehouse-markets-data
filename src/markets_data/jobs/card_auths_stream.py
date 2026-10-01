@@ -3,7 +3,7 @@
 Two queries read markets.payments.card-auths, each with its own checkpoint under CHECKPOINTS
 (the service's /state volume, so a restart resumes where it stopped):
 
-  * bronze: every record as it arrived, appended (Iceberg commits are exactly once per batch)
+  * bronze: every record as it arrived, MERGEd on (partition, offset) so a stale checkpoint adds nothing twice
   * silver: typed, checked and converted to euro at the ECB rate of the day
     (markets_bronze.fx_rates); valid authorisations MERGEd once by auth_id, the rest MERGEd into
     markets_bronze.card_auths_rejects with a reason and sent to the DLQ topic.
@@ -25,7 +25,7 @@ from pyspark.sql.streaming import StreamingQuery
 from markets_data import card_auths, card_stream
 from markets_data.scale import trigger_kwargs
 from markets_data.spark import session
-from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, kafka, resume_start, watch
+from markets_data.streaming import BOOTSTRAP, CHECKPOINTS, kafka, merge_bronze, resume_start, watch
 
 # The ECB fixes once a business day: reading markets_bronze.fx_rates from object storage every
 # batch only loads the store. The rates stay cached in the driver's memory and refresh hourly.
@@ -83,15 +83,12 @@ def start(spark: SparkSession) -> list[StreamingQuery]:
         spark.sql(ddl)
     bronze_cp, silver_cp = f"{CHECKPOINTS}/card_auths_bronze", f"{CHECKPOINTS}/card_auths_silver"
     bronze = (
-        card_stream.raw(
-            kafka(
-                spark, card_auths.TOPIC, resume_start(spark, bronze_cp, card_auths.TOPIC, [card_auths.BRONZE])
-            )
-        )
+        kafka(spark, card_auths.TOPIC, resume_start(spark, bronze_cp, card_auths.TOPIC, [card_auths.BRONZE]))
         .writeStream.queryName("card_auths_bronze")
         .option("checkpointLocation", bronze_cp)
         .trigger(**trigger_kwargs())
-        .toTable(card_auths.BRONZE)
+        .foreachBatch(merge_bronze(card_auths.BRONZE, card_stream.raw))
+        .start()
     )
     silver_start = resume_start(spark, silver_cp, card_auths.TOPIC, [card_auths.SILVER, card_auths.REJECTS])
     silver = (

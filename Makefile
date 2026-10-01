@@ -41,6 +41,9 @@ replay-compare: build ## Compare markets_silver.trades with trades_v2 (exit 1 if
 replay-swap: build ## Make the replayed table live (renames, only if compare passes); TO=v1 rolls back
 	TO=$(or $(TO),v2) docker compose run --rm trades-swap
 
+bronze-dedupe: build ## Remove duplicate records from the bronze tables (run with the streams idle)
+	docker compose run --rm bronze-dedupe
+
 spark-check: build ## The streams' and gold's Spark transforms on sample records, inside the image (no platform needed)
 	for check in check_stream.py check_card_auths.py check_gold.py check_compare.py; do \
 	  docker run --rm -v "$$PWD/tests/spark:/checks:ro" --entrypoint /opt/spark/bin/spark-submit \
@@ -50,4 +53,4 @@ spark-check: build ## The streams' and gold's Spark transforms on sample records
 contracts: ## The platform's contract check, as CI runs it (needs ../open-lakehouse)
 	uv run --quiet ../open-lakehouse/contracts/check.py --tenant markets-data --dir contracts
 
-.PHONY: help lint test build run feed card-stream card-auths card-auths-sample stream replay replay-compare replay-swap spark-check contracts
+.PHONY: help lint test build run feed card-stream card-auths card-auths-sample stream replay replay-compare replay-swap bronze-dedupe spark-check contracts
