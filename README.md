@@ -121,7 +121,8 @@ from 5,000 cards (keyed by card token) at 16 merchants, in seven currencies that
 rate, plus ~1% malformed records for the stream's dead-letter topic. It ships as
 `lakehouse-markets-data:card-auths-<version>` and runs as a tenant service.
 
-The licence is this team's, never in git: the platform tenant file declares the slot, and the
+The licence is this team's, never in git (the trial lapses on 27 Oct 2026 and is not being renewed: the
+generator then idles, as in CI, and the platform is proven without it): the platform tenant file declares the slot, and the
 team stores it once from the platform repo with
 `make tenant-secret TENANT=markets-data NAME=shadowtraffic FILE=<licence.env>`. Local runs here
 and the platform's service read the same file. Without it (the platform's CI) the generator
@@ -166,6 +167,18 @@ country, currency and channel, in euro, with approval rate) and `sanctions_hits`
 normalised name is on today's list). Candles and daily totals rebuild the last two days and
 replace those day partitions; hits are replaced whole, so a delisted match drops out. Five asset
 checks (`gold.CHECKS`) run after each build and show in Dagster. No card token reaches gold.
+
+## First run and the dashboard
+
+A fresh platform has no reference data and no gold. The `first_run` sensor (`definitions.py`, running by
+default, checked every minute) requests the FX and sanctions assets the first time each has never been
+materialized, then gold once both exist, with a fixed `run_key` so it fires once. After that gold's hourly
+schedule (:20) keeps it fresh and the sensor stays quiet (`tests/test_first_run.py`).
+
+The platform repo builds the *Markets & Payments Intelligence* Superset dashboard on the gold tables
+(`scripts/markets_dashboard.py`, run as the analyst persona): price per product, notional by product,
+approval rate by channel, spend by merchant country and the sanctions hits. To see how long a stack takes from
+nothing to queryable gold, run `make first-data T=markets-data` in the platform repo.
 
 ## Streams in one application
 
