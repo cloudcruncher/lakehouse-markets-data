@@ -124,8 +124,40 @@ gold_hourly = dg.ScheduleDefinition(
     default_status=dg.DefaultScheduleStatus.RUNNING,
 )
 
+
+def _never_materialized(instance, asset) -> bool:
+    return any(instance.get_latest_materialization_event(spec.key) is None for spec in asset.specs)
+
+
+@dg.sensor(
+    name="first_run",
+    description="A new stack has no FX, sanctions or gold until a schedule ticks, and Dagster does not "
+    "catch up missed ticks. Runs each once when it has never run; gold waits for both.",
+    minimum_interval_seconds=60,
+    default_status=dg.DefaultSensorStatus.RUNNING,
+    target=[fx_rates, sanctions, gold],
+)
+def first_run(context: dg.SensorEvaluationContext):
+    reference = [("fx_rates", fx_rates), ("sanctions", sanctions)]
+    todo = [name for name, asset in reference if _never_materialized(context.instance, asset)]
+    if todo:
+        return [
+            dg.RunRequest(run_key=f"first-run-{name}", asset_selection=_keys(a))
+            for name, a in reference
+            if name in todo
+        ]
+    if _never_materialized(context.instance, gold):
+        return [dg.RunRequest(run_key="first-run-gold", asset_selection=_keys(gold))]
+    return []
+
+
+def _keys(asset) -> list[dg.AssetKey]:
+    return [spec.key for spec in asset.specs]
+
+
 defs = dg.Definitions(
     assets=[fx_rates, sanctions, gold],
     schedules=[fx_daily, sanctions_daily, gold_hourly],
+    sensors=[first_run],
     resources={"pipes": dg.PipesSubprocessClient()},
 )
